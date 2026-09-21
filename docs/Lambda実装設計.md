@@ -123,14 +123,16 @@ shared/
 #### config.py
 
 - 環境変数の読み込み
-- `TABLE_NAME`, `AWS_REGION`, `DROPBOX_APP_KEY`, `DROPBOX_REFRESH_TOKEN` などの解決
+- `TABLE_NAME`, `AWS_REGION` などの非機密設定を環境変数から解決
+- Dropbox のシークレットを SSM Parameter Store から取得
+- 初回取得後は Lambda 実行環境のメモリにキャッシュ
 - 環境変数不足時の明示的エラー
 
 #### auth.py
 
 - `Authorization` ヘッダーから JWT を取得
 - Cognito 認証済みのユーザー sub を検出
-- Lambda で利用する `user_id` を生成する
+- Lambda で利用する `userId` を取得する
 
 #### dynamodb.py
 
@@ -282,6 +284,13 @@ DynamoDB は 1 テーブル方式を採用し、各 Lambda は PK / SK / GSI を
 - 親子整合性確認: `GetItem` をループして確認
 - ID採番: `COUNTER` の `UpdateItem`
 
+### 6.3 ユーザー境界
+
+- Cognito JWT の `sub` を `userId` として扱う
+- FIELD、AREA、CROP、CULTIVATION、WORK_LOG、HARVEST、PHOTO の業務Itemに `userId` を保存する（COUNTERは除く）
+- 初期版は1ユーザー前提だが、取得・更新・削除時には `userId` を必ず検証する
+- `userId` は PK / SK には含めず、将来の多ユーザー対応用の属性として保持する
+
 ---
 
 ## 7. ID採番設計
@@ -418,7 +427,7 @@ COUNTER
 
 処理:
 
-1. JWT から `user_id` を取得
+1. JWT から `userId` を取得
 2. JSON 形式を検証
 3. `FIELD` 向け ID を採番
 4. `createdAt` と `updatedAt` をセット
@@ -516,7 +525,7 @@ COUNTER
 GSI3 を利用して次の条件で取得する。
 
 - `status = growing`
-- `user_id` または `ownerId` に一致
+- 認証ユーザーの `userId` に一致
 
 ### 13.3 ラベル定義
 
@@ -565,6 +574,14 @@ SPA
   -> PHOTOのメタデータをレスポンスとして返却
 ```
 
+実装条件:
+
+- 最大サイズは3MB
+- 許可形式は JPEG / PNG / WebP
+- API Gateway の `isBase64Encoded` が `true` の場合は Lambda でデコードする
+- MIMEタイプだけでなく、ファイル内容も検証する
+- Dropbox の保存先は `/mitsuru-farm/{cultivationId}/` 配下に統一する
+
 ### 15.2 保存方式
 
 #### 方式A: Dropbox の shared_link を保持
@@ -581,6 +598,11 @@ SPA
 
 初期版では、DynamoDB に `dropboxPath` または `fileId` を保存し、必要時に一時URLを生成する設計が安全である。
 
+採用方式:
+
+- DynamoDB には Dropbox の `fileId` と `dropboxPath` を保存する
+- 画面表示時に `fileId` または `dropboxPath` から一時URLを生成する
+
 ### 15.3 一時URL生成
 
 - `files/get_temporary_link` または `sharing/create_shared_link_with_settings` を利用
@@ -596,6 +618,8 @@ SPA
 3. DynamoDB から PHOTO Item を削除
 4. Dropbox 失敗時は DynamoDB 削除を行わない
 
+アップロード後に DynamoDB への PHOTO 登録が失敗した場合は、Dropbox にアップロードしたファイルを削除してロールバックする。
+
 ---
 
 ## 16. 認証・認可設計
@@ -604,7 +628,7 @@ SPA
 
 - API Gateway の JWT Authorizer を利用する
 - `sub` を ID として扱う
-- Lambda では `user_id` として保持する
+- Lambda では `userId` として保持する
 
 ### 16.2 ユーザー境界
 
@@ -677,18 +701,24 @@ TABLE_NAME=FARM_TBL
 AWS_REGION=ap-northeast-1
 COGNITO_USER_POOL_ID=...
 COGNITO_CLIENT_ID=...
-DROPBOX_APP_KEY=...
-DROPBOX_APP_SECRET=...
-DROPBOX_REFRESH_TOKEN=...
+SSM_DROPBOX_APP_KEY=/mitsuru-farm/dropbox/app-key
+SSM_DROPBOX_APP_SECRET=/mitsuru-farm/dropbox/app-secret
+SSM_DROPBOX_REFRESH_TOKEN=/mitsuru-farm/dropbox/refresh-token
 ```
 
 ### 18.2 推奨非公開管理
 
 - Dropbox のアクセストークン
+- Dropbox App Secret
 - Refresh Token
 - AWS 認証情報
 
-は環境変数に直接埋め込まず、SSM Parameter Store または Secrets Manager に格納する。
+は環境変数に直接埋め込まず、SSM Parameter Store の `SecureString` に格納する。Lambdaは初回実行時に `GetParameters(WithDecryption=true)` で取得し、実行環境内にキャッシュする。
+
+必要なIAM権限:
+
+- `ssm:GetParameters`
+- カスタマーマネージドKMSキーを使用する場合のみ `kms:Decrypt`
 
 ---
 
@@ -781,6 +811,25 @@ lambda-photo/
       ...
     requirements.txt
 ```
+
+### 20.1 テスト方針
+
+pytestによる単体テストを中心とし、AWS接続を伴う結合テストは主要な疎通確認に限定する。
+
+単体テストの対象:
+
+- 入力バリデーション
+- DynamoDBのPK / SK / GSIキー生成
+- ID採番
+- API Gatewayイベントのルーティング
+- 認証ユーザーと `userId` の所有者検証
+- CRUD処理
+- 親子関係の整合性検証
+- cascade削除と25件単位のBatchWrite再試行
+- 統一エラーレスポンス
+- Dropbox APIをモックした写真アップロード・削除・ロールバック
+
+テストではDynamoDBとDropboxへの実通信を原則行わず、`boto3` とDropbox SDKをモックする。AWS環境では、Cognito認証、API Gateway、DynamoDB、Dropboxを接続した代表的な疎通テストを実施する。
 
 ---
 

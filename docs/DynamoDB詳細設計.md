@@ -33,7 +33,15 @@ Lambdaからのアクセス方針 - サンプルItem
 
 ## 3. 共通データルール
 
-### 3.1 DynamoDB型
+### 3.1 ユーザー境界
+
+- Cognito JWTの `sub` を `userId` として扱う
+- FIELD、AREA、CROP、CULTIVATION、WORK_LOG、HARVEST、PHOTOに `userId` を保存する
+- COUNTERはシステム管理Itemのため `userId` を保存しない
+- Lambdaは取得・更新・削除時に、認証ユーザーの `userId` とItemの `userId` が一致することを検証する
+- `userId` は初期版ではPK / SKに含めず、将来の多ユーザー対応用の属性として保持する
+
+### 3.2 DynamoDB型
 
   論理型         DynamoDB型   例
   -------------- ------------ -----------------------------
@@ -43,7 +51,7 @@ Lambdaからのアクセス方針 - サンプルItem
   配列           `L`          `["鍬","三叉鍬"]`
   オブジェクト   `M`          `{"amount":10,"unit":"kg"}`
 
-### 3.2 日付
+### 3.3 日付
 
 日付だけを扱う属性は `YYYY-MM-DD` の文字列とする。
 
@@ -55,7 +63,7 @@ Lambdaからのアクセス方針 - サンプルItem
 `harvestEndDate` - `completedDate` - WORK_LOG `date` - HARVEST
 `harvestDate`
 
-### 3.3 日時
+### 3.4 日時
 
 システム上の作成日時・更新日時はUTCのISO 8601文字列とする。
 
@@ -65,13 +73,13 @@ Lambdaからのアクセス方針 - サンプルItem
 
 対象: - `createdAt` - `updatedAt`
 
-### 3.4 年度
+### 3.5 年度
 
 `CULTIVATION.year` は栽培開始年をNumberで保持する。
 
 2026年9月播種・2027年1月収穫なら `year = 2026` とする。
 
-### 3.5 ID
+### 3.6 ID
 
   データ        Prefix   例
   ------------- -------- ----------
@@ -583,9 +591,9 @@ Dropbox path取得
 DynamoDBへPHOTO登録
 ```
 
-DynamoDB登録に失敗した場合、Dropbox上に孤立ファイルが残る可能性がある。
+DynamoDB登録に失敗した場合は、Dropboxにアップロードしたファイルを削除してロールバックする。
 
-初期版ではロールバック処理を実装せず、孤立ファイルを許容する。
+ロールバックにも失敗した場合は、エラー内容とDropboxのファイルパスをCloudWatch Logsへ記録し、後から再処理できる状態にする。
 
 ## 10.2 削除
 

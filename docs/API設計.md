@@ -117,6 +117,18 @@ nextToken
 
 次ページがない場合は`nextToken`を省略または`null`とする。
 
+### 5.2 API Gatewayルート運用
+
+API Gatewayでは、以下のルートを明示的に登録し、すべてのルートにCognito JWT Authorizerを適用する。
+
+| Lambda | 対象リソース |
+|---|---|
+| `master-api` | `/fields*`, `/crops*` |
+| `cultivation-api` | `/cultivations*`, `/fields/{fieldId}/areas/{areaId}/cultivations`, `/crops/{cropId}/cultivations` |
+| `photo-api` | `/cultivations/{cultivationId}/photos*` |
+
+`/cultivations/current` は `/cultivations/{cultivationId}` より先に固定ルートとして登録する。`{cultivationId}` に `current` が誤って解釈されないようにするためである。
+
 ## 6. 共通レスポンス規約
 
 ### 6.1 作成
@@ -310,6 +322,8 @@ Content-Type: multipart/form-data
 
 最大3MB。
 
+許可形式は JPEG、PNG、WebP とする。LambdaではAPI Gatewayの `isBase64Encoded` を考慮してデコードし、MIMEタイプだけでなくファイル内容も検証する。Dropboxの保存先は `/mitsuru-farm/{cultivationId}/` 配下に統一する。
+
 処理順序:
 
 ``` text
@@ -326,7 +340,7 @@ DynamoDBへPHOTO登録
 PHOTOを返す
 ```
 
-DynamoDB登録失敗時、初期版ではDropboxファイルを自動ロールバックしない。孤児ファイルが発生する可能性がある。
+実装では、DynamoDB登録に失敗した場合にDropboxへアップロードしたファイルを削除してロールバックする。Dropboxのロールバックにも失敗した場合は、エラーを記録し、後から再処理できるようにする。
 
 ### 14.2 表示
 
@@ -353,6 +367,13 @@ LambdaがDropboxの一時URLを生成して返す。
 Dropbox上に既にファイルがない場合は削除済みとして扱う。
 
 Dropbox削除に失敗した場合はDynamoDB Itemを削除しない。
+
+### 14.4 ユーザー境界
+
+- Cognito JWTの `sub` を `userId` として扱う
+- 全リソースに `userId` を保存する
+- 取得・更新・削除時は、認証ユーザーの `userId` とItemの `userId` が一致することを検証する
+- `userId` はURLやPK/SKには含めない
 
 ## 15. PUT更新方式
 
