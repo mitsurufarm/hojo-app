@@ -29,7 +29,7 @@ function Cultivations() { const [items, setItems] = useState<Cultivation[]>([]);
 function CultivationDetail() { const { cultivationId = '' } = useParams(); const [item, setItem] = useState<Cultivation>(); const [error, setError] = useState(''); useEffect(() => { cultivations.get(cultivationId).then(setItem).catch(e => setError(errorMessage(e))) }, [cultivationId]); if (error) return <Page title="栽培"><Notice>{error}</Notice></Page>; if (!item) return <Loading />; return <Page title={item.cropName || item.cropId} action={<Link className="secondary button-link" to={`/cultivations/${cultivationId}/edit`}>編集</Link>}><p className={`badge ${item.status}`}>{statusLabel(item.status)}</p><div className="details"><p><b>栽培ID</b>{item.cultivationId}</p><p><b>圃場 / エリア</b>{item.fieldName || item.fieldId} / {item.areaName || item.areaId}</p><p><b>年度 / 品種 / 季節</b>{item.year}年 / {item.variety || '—'} / {item.season || '—'}</p><p><b>播種 / 定植</b>{item.sowingDate || '—'} / {item.plantingDate || '—'}</p><p><b>備考</b>{item.note || '—'}</p></div><div className="quick record-actions"><Link to={`/cultivations/${cultivationId}/work-logs/new`}>＋ 作業</Link><Link to={`/cultivations/${cultivationId}/harvests/new`}>＋ 収穫</Link><Link to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真</Link></div><div className="tabs"><Link to={`/cultivations/${cultivationId}/work-logs`}>作業</Link><Link to={`/cultivations/${cultivationId}/harvests`}>収穫</Link><Link to={`/cultivations/${cultivationId}/photos`}>写真</Link></div></Page> }
 
 type Kind = 'field' | 'area' | 'crop' | 'cultivation' | 'work' | 'harvest'
-const fieldDefs: Record<Kind, [string, string, string?][]> = { field: [['name', '圃場名', 'text'], ['area', '面積（m²）', 'number'], ['location', '所在地'], ['soilType', '土質'], ['drainage', '排水性'], ['sunlight', '日当たり'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], area: [['name', 'エリア名'], ['areaSize', '面積（m²）', 'number'], ['position', '圃場内の位置'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], crop: [['name', '作物名'], ['category', 'カテゴリ'], ['active', '利用状態', 'boolean'], ['note', '備考', 'textarea']], cultivation: [['fieldId', '圃場ID'], ['areaId', 'エリアID'], ['cropId', '作物ID'], ['year', '栽培年度', 'number'], ['variety', '品種'], ['season', '季節'], ['sowingDate', '播種日', 'date'], ['plantingDate', '定植日', 'date'], ['harvestStartDate', '収穫開始日', 'date'], ['harvestEndDate', '収穫終了日', 'date'], ['completedDate', '完了日', 'date'], ['status', '状態', 'cultivationStatus'], ['note', '備考', 'textarea']], work: [['date', '作業日', 'date'], ['workType', '作業種別', 'workType'], ['description', '作業内容', 'textarea'], ['workMinutes', '作業時間（分）', 'number'], ['workerCount', '作業人数', 'number'], ['weather', '天候'], ['temperature', '気温（℃）', 'number'], ['soilCondition', '土壌状態'], ['beforeCondition', '作業前の状態'], ['afterCondition', '作業後の状態'], ['note', '備考', 'textarea']], harvest: [['harvestDate', '収穫日', 'date'], ['quantity', '収穫量', 'number'], ['unit', '単位'], ['saleQuantity', '販売量', 'number'], ['selfConsumptionQuantity', '自家消費量', 'number'], ['discardQuantity', '廃棄量', 'number'], ['sales', '売上（円）', 'number'], ['salesChannel', '販路'], ['note', '備考', 'textarea']] }
+const fieldDefs: Record<Kind, [string, string, string?][]> = { field: [['name', '圃場名', 'text'], ['area', '面積（m²）', 'number'], ['location', '所在地'], ['soilType', '土質'], ['drainage', '排水性'], ['sunlight', '日当たり'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], area: [['name', 'エリア名'], ['areaSize', '面積（m²）', 'number'], ['position', '圃場内の位置'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], crop: [['name', '作物名'], ['category', 'カテゴリ'], ['active', '利用状態', 'boolean'], ['note', '備考', 'textarea']], cultivation: [['year', '栽培年度', 'number'], ['variety', '品種'], ['season', '季節'], ['sowingDate', '播種日', 'date'], ['plantingDate', '定植日', 'date'], ['harvestStartDate', '収穫開始日', 'date'], ['harvestEndDate', '収穫終了日', 'date'], ['completedDate', '完了日', 'date'], ['status', '状態', 'cultivationStatus'], ['note', '備考', 'textarea']], work: [['date', '作業日', 'date'], ['workType', '作業種別', 'workType'], ['description', '作業内容', 'textarea'], ['workMinutes', '作業時間（分）', 'number'], ['workerCount', '作業人数', 'number'], ['weather', '天候'], ['temperature', '気温（℃）', 'number'], ['soilCondition', '土壌状態'], ['beforeCondition', '作業前の状態'], ['afterCondition', '作業後の状態'], ['note', '備考', 'textarea']], harvest: [['harvestDate', '収穫日', 'date'], ['quantity', '収穫量', 'number'], ['unit', '単位'], ['saleQuantity', '販売量', 'number'], ['selfConsumptionQuantity', '自家消費量', 'number'], ['discardQuantity', '廃棄量', 'number'], ['sales', '売上（円）', 'number'], ['salesChannel', '販路'], ['note', '備考', 'textarea']] }
 function FormPage({ kind }: { kind: Kind }) {
   const p = useParams();
   const navigate = useNavigate();
@@ -38,12 +38,45 @@ function FormPage({ kind }: { kind: Kind }) {
   const [values, setValues] = useState<Record<string, unknown>>(kind === 'crop' ? { active: true } : { status: kind === 'cultivation' ? 'planned' : 'active' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [fieldItems, setFieldItems] = useState<Field[]>([]);
+  const [areaItems, setAreaItems] = useState<Area[]>([]);
+  const [cropItems, setCropItems] = useState<Crop[]>([]);
 
   useEffect(() => {
     if (!id) return;
     const get = kind === 'field' ? fields.get(id) : kind === 'area' ? areas.get(parent!, id) : kind === 'crop' ? crops.get(id) : kind === 'cultivation' ? cultivations.get(id) : kind === 'work' ? workLogs.get(parent!, id) : harvests.get(parent!, id);
     get.then((x: unknown) => setValues(x as unknown as Record<string, unknown>)).catch(e => setError(errorMessage(e)))
   }, [id, kind, parent]);
+
+  useEffect(() => {
+    if (kind !== 'cultivation') return;
+
+    Promise.all([
+      fields.list(),
+      crops.list(),
+    ])
+      .then(([fieldResult, cropResult]) => {
+        setFieldItems(fieldResult.items);
+        setCropItems(cropResult.items);
+      })
+      .catch(e => setError(errorMessage(e)));
+  }, [kind]);
+
+  useEffect(() => {
+    if (kind !== 'cultivation') return;
+
+    const fieldId = String(values.fieldId ?? '');
+
+    if (!fieldId) {
+      setAreaItems([]);
+      return;
+    }
+
+    areas
+      .list(fieldId)
+      .then(result => setAreaItems(result.items))
+      .catch(e => setError(errorMessage(e)));
+  }, [kind, values.fieldId]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -73,7 +106,59 @@ function FormPage({ kind }: { kind: Kind }) {
     }
   };
 
-  return <Page title={`${id ? '編集' : '登録'}：${{ field: '圃場', area: 'エリア', crop: '作物', cultivation: '栽培', work: '作業', harvest: '収穫' }[kind]}`}><form className="form" onSubmit={submit}>{fieldDefs[kind].map(([key, label, type]) => <FormControl key={key} label={label} name={key} type={type} value={values[key]} onChange={v => setValues(x => ({ ...x, [key]: v }))} />)}{error && <Notice>{error}</Notice>}<button className="primary" disabled={saving}>{saving ? '保存中…' : '保存する'}</button></form></Page>
+  return <Page title={`${id ? '編集' : '登録'}：${{ field: '圃場', area: 'エリア', crop: '作物', cultivation: '栽培', work: '作業', harvest: '収穫' }[kind]}`}>
+    <form className="form" onSubmit={submit}>
+      {kind === 'cultivation' && <>
+        <label>圃場
+          <select
+            value={String(values.fieldId ?? '')}
+            onChange={e => setValues(x => ({ ...x, fieldId: e.target.value, areaId: '' }))}
+            required
+          >
+            <option value="">圃場を選択してください</option>
+            {fieldItems.map(field => <option key={field.fieldId} value={field.fieldId}>{field.name}</option>)}
+          </select>
+        </label>
+
+        <label>エリア
+          <select
+            value={String(values.areaId ?? '')}
+            onChange={e => setValues(x => ({ ...x, areaId: e.target.value }))}
+            disabled={!values.fieldId}
+            required
+          >
+            <option value="">エリアを選択してください</option>
+            {areaItems.map(area => <option key={area.areaId} value={area.areaId}>{area.name}</option>)}
+          </select>
+        </label>
+
+        <label>作物
+          <select
+            value={String(values.cropId ?? '')}
+            onChange={e => setValues(x => ({ ...x, cropId: e.target.value }))}
+            required
+          >
+            <option value="">作物を選択してください</option>
+            {cropItems.filter(crop => crop.active).map(crop => <option key={crop.cropId} value={crop.cropId}>{crop.name}</option>)}
+          </select>
+        </label>
+      </>}
+
+      {fieldDefs[kind].map(([key, label, type]) =>
+        <FormControl
+          key={key}
+          label={label}
+          name={key}
+          type={type}
+          value={values[key]}
+          onChange={v => setValues(x => ({ ...x, [key]: v }))}
+        />
+      )}
+
+      {error && <Notice>{error}</Notice>}
+      <button className="primary" disabled={saving}>{saving ? '保存中…' : '保存する'}</button>
+    </form>
+  </Page>
 }
 function FormControl({ label, name, type = 'text', value, onChange }: { label: string; name: string; type?: string; value: unknown; onChange: (v: string | boolean) => void }) { if (type === 'textarea') return <label>{label}<textarea value={String(value ?? '')} onChange={e => onChange(e.target.value)} /></label>; if (type === 'boolean') return <label className="check"><input type="checkbox" checked={Boolean(value)} onChange={e => onChange(e.target.checked)} />利用可能にする</label>; if (type === 'select' || type === 'cultivationStatus' || type === 'workType') { const options = type === 'cultivationStatus' ? [['planned', '予定'], ['growing', '栽培中'], ['completed', '完了'], ['failed', '中止']] : type === 'workType' ? workTypes.map(v => [v, v]) : [['active', '使用中'], ['inactive', '休止']]; return <label>{label}<select value={String(value ?? '')} onChange={e => onChange(e.target.value)}>{options.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label> } return <label>{label}<input name={name} type={type as HTMLInputTypeAttribute} value={String(value ?? '')} onChange={e => onChange(e.target.value)} required={['name', 'area', 'areaSize', 'fieldId', 'areaId', 'cropId', 'year', 'date', 'workType', 'quantity', 'unit', 'harvestDate'].includes(name)} /></label> }
 
