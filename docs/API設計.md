@@ -131,6 +131,16 @@ API Gatewayでは、以下のルートを明示的に登録し、すべてのル
 
 ## 6. 共通レスポンス規約
 
+### 6.0 DynamoDB数値のJSON変換
+
+DynamoDBのNumber型をboto3で読み込むとPythonの`Decimal`として返るため、LambdaのJSONレスポンス生成時にJSON numberへ変換する。
+
+- 整数値の`Decimal`はJSON整数（例: `Decimal("2026")` → `2026`）
+- 小数値の`Decimal`はJSON小数（例: `Decimal("1.25")` → `1.25`）
+- 数値を文字列として返さない
+
+この変換はレスポンス表現のみを対象とし、DynamoDBの保存型、属性名、APIのレスポンス構造は変更しない。
+
 ### 6.1 作成
 
 POST成功時は作成されたリソース全体を返す。

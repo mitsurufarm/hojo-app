@@ -145,6 +145,7 @@ shared/
 - 成功時の JSON レスポンス整形
 - `statusCode`, `headers`, `body` の共通生成
 - `nextToken` の付与
+- DynamoDBから返る`Decimal`をJSON numberへ変換する（整数値はint、小数値はfloat）
 
 #### validation.py
 

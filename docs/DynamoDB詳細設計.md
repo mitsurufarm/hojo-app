@@ -51,6 +51,8 @@ Lambdaからのアクセス方針 - サンプルItem
   配列           `L`          `["鍬","三叉鍬"]`
   オブジェクト   `M`          `{"amount":10,"unit":"kg"}`
 
+Lambdaのレスポンスでは、boto3が返す`Decimal`をJSON numberへ変換する。整数値はJSON整数、小数値はJSON小数とし、数値を文字列化しない。この変換はAPI出力時のみ行い、DynamoDBのNumber型や保存データは変更しない。
+
 ### 3.3 日付
 
 日付だけを扱う属性は `YYYY-MM-DD` の文字列とする。
