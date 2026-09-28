@@ -58,7 +58,59 @@ const statusLabel = (status: string) => ({ planned: '予定', growing: '栽培�
 
 function Fields() { const [items, setItems] = useState<Field[]>([]); const [error, setError] = useState(''); useEffect(() => { fields.list().then(v => setItems(v.items)).catch(e => setError(errorMessage(e))) }, []); return <Page title="圃場" action={<Link className="primary button-link" to="/fields/new">＋ 圃場を追加</Link>}>{error && <Notice>{error}</Notice>}<div className="card-grid">{items.map(f => <Link className="card" key={f.fieldId} to={`/fields/${f.fieldId}`}><span className="badge">{statusLabel(f.status)}</span><h3>{f.name}</h3><p>{formatArea(f.area)}</p><p>{f.location || '所在地未登録'}</p></Link>)}</div>{!items.length && !error && <Empty text="圃場がありません。最初の圃場を追加してください。" />}</Page> }
 function FieldDetail() { const { fieldId = '' } = useParams(); const [field, setField] = useState<Field>(); const [items, setItems] = useState<Area[]>([]); const [error, setError] = useState(''); useEffect(() => { Promise.all([fields.get(fieldId), areas.list(fieldId)]).then(([f, a]) => { setField(f); setItems(a.items) }).catch(e => setError(errorMessage(e))) }, [fieldId]); if (error) return <Page title="圃場"><Notice>{error}</Notice></Page>; if (!field) return <Loading />; return <Page title={field.name} action={<Link className="secondary button-link" to={`/fields/${fieldId}/edit`}>編集</Link>}><div className="details"><p><b>面積</b>{formatArea(field.area)}</p><p><b>所在地</b>{field.location || '—'}</p><p><b>土質 / 排水性 / 日当たり</b>{[field.soilType, field.drainage, field.sunlight].filter(Boolean).join(' / ') || '—'}</p><p><b>備考</b>{field.note || '—'}</p></div><div className="section-head"><h2>エリア</h2><Link to={`/fields/${fieldId}/areas/new`}>＋ 追加</Link></div><div className="list">{items.map(a => <Link key={a.areaId} className="list-row" to={`/fields/${fieldId}/areas/${a.areaId}`}><span><b>{a.name}</b><small>{formatArea(a.areaSize)} ・ {statusLabel(a.status)}</small></span><span>›</span></Link>)}</div>{!items.length && <Empty text="エリアがありません。" />}</Page> }
-function AreaDetail() { const { fieldId = '', areaId = '' } = useParams(); const [area, setArea] = useState<Area>(); const [items, setItems] = useState<Cultivation[]>([]); const [error, setError] = useState(''); useEffect(() => { Promise.all([areas.get(fieldId, areaId), areas.cultivations(fieldId, areaId)]).then(([a, c]) => { setArea(a); setItems(c.items) }).catch(e => setError(errorMessage(e))) }, [fieldId, areaId]); if (error) return <Page title="エリア"><Notice>{error}</Notice></Page>; if (!area) return <Loading />; return <Page title={area.name} action={<Link className="secondary button-link" to={`/fields/${fieldId}/areas/${areaId}/edit`}>編集</Link>}><div className="details"><p><b>面積</b>{formatArea(area.areaSize)}</p><p><b>位置</b>{area.position || '—'}</p><p><b>状態</b>{statusLabel(area.status)}</p><p><b>備考</b>{area.note || '—'}</p></div><div className="section-head"><h2>栽培履歴</h2><Link to={`/cultivations/new?fieldId=${fieldId}&areaId=${areaId}`}>＋ 栽培を追加</Link></div>{items.map(c => <CultivationCard key={c.cultivationId} item={c} />)}{!items.length && <Empty text="栽培履歴がありません。" />}</Page> }
+
+function AreaDetail() {
+  const { fieldId = '', areaId = '' } = useParams()
+  const [area, setArea] = useState<Area>()
+  const [items, setItems] = useState<Cultivation[]>([])
+  const [error, setError] = useState('')
+  const [fieldItems, setFieldItems] = useState<Field[]>([])
+  const [cropItems, setCropItems] = useState<Crop[]>([])
+
+  useEffect(() => {
+    Promise.all([
+      areas.get(fieldId, areaId),
+      areas.cultivations(fieldId, areaId),
+      fields.list(),
+      crops.list(),
+    ])
+      .then(([areaResult, cultivationResult, fieldResult, cropResult]) => {
+        setArea(areaResult)
+        setItems(cultivationResult.items)
+        setFieldItems(fieldResult.items)
+        setCropItems(cropResult.items)
+      })
+      .catch(e => setError(errorMessage(e)))
+  }, [fieldId, areaId])
+
+  if (error) return <Page title="エリア"><Notice>{error}</Notice></Page>
+  if (!area) return <Loading />
+
+  const displayItems = items.map(item => ({
+    ...item,
+    cropName: cropItems.find(crop => crop.cropId === item.cropId)?.name,
+    fieldName: fieldItems.find(field => field.fieldId === item.fieldId)?.name,
+    areaName: item.areaId === area.areaId ? area.name : undefined,
+  }))
+
+  return <Page title={area.name} action={<Link className="secondary button-link" to={`/fields/${fieldId}/areas/${areaId}/edit`}>編集</Link>}>
+    <div className="details">
+      <p><b>面積</b>{formatArea(area.areaSize)}</p>
+      <p><b>位置</b>{area.position || '—'}</p>
+      <p><b>状態</b>{statusLabel(area.status)}</p>
+      <p><b>備考</b>{area.note || '—'}</p>
+    </div>
+
+    <div className="section-head">
+      <h2>栽培履歴</h2>
+      <Link to={`/cultivations/new?fieldId=${fieldId}&areaId=${areaId}`}>＋ 栽培を追加</Link>
+    </div>
+
+    {displayItems.map(c => <CultivationCard key={c.cultivationId} item={c} />)}
+
+    {!items.length && <Empty text="栽培履歴がありません。" />}
+  </Page>
+}
 
 function Cultivations() { 
   const [items, setItems] = useState<Cultivation[]>([]); 
