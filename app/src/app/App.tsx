@@ -16,7 +16,42 @@ function Page({ title, action, children }: { title: string; action?: ReactNode; 
 function Notice({ children }: { children: ReactNode }) { return <div className="notice">{children}</div> }
 function Login() { const { authenticated, login } = useAuth(); if (authenticated) return <Navigate to="/" replace />; return <main className="login"><div className="login-card"><p className="eyebrow">FIELD RECORD</p><h1>MITSURU FARM</h1><p>圃場・栽培・作業・収穫をまとめて記録します。</p>{authConfigured ? <button className="primary" onClick={() => void login()}>Cognitoでログイン</button> : <Notice><strong>接続設定が未完了です。</strong><br />`app/.env.local` にCognitoとAPI Gatewayの公開設定値を入力してください。</Notice>}<a className="back-link" href="/">公開サイトへ戻る</a></div></main> }
 
-function Home() { const [items, setItems] = useState<Cultivation[]>([]); const [error, setError] = useState(''); useEffect(() => { cultivations.current().then(v => setItems(v.items)).catch(e => setError(errorMessage(e))) }, []); return <Page title="ホーム" action={<Link className="primary button-link" to="/cultivations/new">＋ 栽培を登録</Link>}>{error && <Notice>{error}</Notice>}<h2>現在栽培中</h2>{items.length ? <div className="card-grid">{items.map(c => <CultivationCard key={c.cultivationId} item={c} />)}</div> : <Empty text="現在栽培中の作物はありません。" />}<section className="quick"><h2>クイック操作</h2><div><Link to="/cultivations">栽培を見る</Link><Link to="/fields">圃場を管理</Link><Link to="/crops">作物を管理</Link></div></section></Page> }
+function Home() { 
+  const [items, setItems] = useState<Cultivation[]>([]); 
+  const [error, setError] = useState(''); 
+  const [fieldItems, setFieldItems] = useState<Field[]>([])
+  const [areaItems, setAreaItems] = useState<Area[]>([])
+  const [cropItems, setCropItems] = useState<Crop[]>([])
+
+  useEffect(() => {
+    Promise.all([
+      cultivations.current(),
+      fields.list(),
+      crops.list(),
+    ])
+      .then(async ([cultivationResult, fieldResult, cropResult]) => {
+        const areaResults = await Promise.all(
+          fieldResult.items.map(field => areas.list(field.fieldId))
+        )
+
+        setItems(cultivationResult.items)
+        setFieldItems(fieldResult.items)
+        setCropItems(cropResult.items)
+        setAreaItems(areaResults.flatMap(result => result.items))
+      })
+      .catch(e => setError(errorMessage(e)))
+  }, [])
+
+  const displayItems = items.map(item => ({
+    ...item,
+    cropName: cropItems.find(crop => crop.cropId === item.cropId)?.name,
+    fieldName: fieldItems.find(field => field.fieldId === item.fieldId)?.name,
+    areaName: areaItems.find(area => area.areaId === item.areaId)?.name,
+  }))
+
+  return <Page title="ホーム" action={<Link className="primary button-link" to="/cultivations/new">＋ 栽培を登録</Link>}>{error && <Notice>{error}</Notice>}<h2>現在栽培中</h2>{items.length ? <div className="card-grid">{displayItems.map(c => <CultivationCard key={c.cultivationId} item={c} />)}</div> : <Empty text="現在栽培中の作物はありません。" />}<section className="quick"><h2>クイック操作</h2><div><Link to="/cultivations">栽培を見る</Link><Link to="/fields">圃場を管理</Link><Link to="/crops">作物を管理</Link></div></section></Page> 
+}
+
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div> }
 function CultivationCard({ item }: { item: Cultivation }) { return <Link className="card" to={`/cultivations/${item.cultivationId}`}><span className={`badge ${item.status}`}>{statusLabel(item.status)}</span><h3>{item.cropName || item.cropId}</h3><p>{item.year}年 {item.season && `・${item.season}`}</p><p>{item.fieldName || item.fieldId} / {item.areaName || item.areaId}</p></Link> }
 const statusLabel = (status: string) => ({ planned: '予定', growing: '栽培中', completed: '完了', failed: '中止', active: '使用中', inactive: '休止' } as Record<string, string>)[status] || status
@@ -25,8 +60,89 @@ function Fields() { const [items, setItems] = useState<Field[]>([]); const [erro
 function FieldDetail() { const { fieldId = '' } = useParams(); const [field, setField] = useState<Field>(); const [items, setItems] = useState<Area[]>([]); const [error, setError] = useState(''); useEffect(() => { Promise.all([fields.get(fieldId), areas.list(fieldId)]).then(([f, a]) => { setField(f); setItems(a.items) }).catch(e => setError(errorMessage(e))) }, [fieldId]); if (error) return <Page title="圃場"><Notice>{error}</Notice></Page>; if (!field) return <Loading />; return <Page title={field.name} action={<Link className="secondary button-link" to={`/fields/${fieldId}/edit`}>編集</Link>}><div className="details"><p><b>面積</b>{formatArea(field.area)}</p><p><b>所在地</b>{field.location || '—'}</p><p><b>土質 / 排水性 / 日当たり</b>{[field.soilType, field.drainage, field.sunlight].filter(Boolean).join(' / ') || '—'}</p><p><b>備考</b>{field.note || '—'}</p></div><div className="section-head"><h2>エリア</h2><Link to={`/fields/${fieldId}/areas/new`}>＋ 追加</Link></div><div className="list">{items.map(a => <Link key={a.areaId} className="list-row" to={`/fields/${fieldId}/areas/${a.areaId}`}><span><b>{a.name}</b><small>{formatArea(a.areaSize)} ・ {statusLabel(a.status)}</small></span><span>›</span></Link>)}</div>{!items.length && <Empty text="エリアがありません。" />}</Page> }
 function AreaDetail() { const { fieldId = '', areaId = '' } = useParams(); const [area, setArea] = useState<Area>(); const [items, setItems] = useState<Cultivation[]>([]); const [error, setError] = useState(''); useEffect(() => { Promise.all([areas.get(fieldId, areaId), areas.cultivations(fieldId, areaId)]).then(([a, c]) => { setArea(a); setItems(c.items) }).catch(e => setError(errorMessage(e))) }, [fieldId, areaId]); if (error) return <Page title="エリア"><Notice>{error}</Notice></Page>; if (!area) return <Loading />; return <Page title={area.name} action={<Link className="secondary button-link" to={`/fields/${fieldId}/areas/${areaId}/edit`}>編集</Link>}><div className="details"><p><b>面積</b>{formatArea(area.areaSize)}</p><p><b>位置</b>{area.position || '—'}</p><p><b>状態</b>{statusLabel(area.status)}</p><p><b>備考</b>{area.note || '—'}</p></div><div className="section-head"><h2>栽培履歴</h2><Link to={`/cultivations/new?fieldId=${fieldId}&areaId=${areaId}`}>＋ 栽培を追加</Link></div>{items.map(c => <CultivationCard key={c.cultivationId} item={c} />)}{!items.length && <Empty text="栽培履歴がありません。" />}</Page> }
 
-function Cultivations() { const [items, setItems] = useState<Cultivation[]>([]); const [error, setError] = useState(''); useEffect(() => { cultivations.list().then(v => setItems(v.items)).catch(e => setError(errorMessage(e))) }, []); return <Page title="栽培" action={<Link className="primary button-link" to="/cultivations/new">＋ 栽培を登録</Link>}>{error && <Notice>{error}</Notice>}<div className="card-grid">{items.map(c => <CultivationCard key={c.cultivationId} item={c} />)}</div>{!items.length && !error && <Empty text="栽培記録がありません。" />}</Page> }
-function CultivationDetail() { const { cultivationId = '' } = useParams(); const [item, setItem] = useState<Cultivation>(); const [error, setError] = useState(''); useEffect(() => { cultivations.get(cultivationId).then(setItem).catch(e => setError(errorMessage(e))) }, [cultivationId]); if (error) return <Page title="栽培"><Notice>{error}</Notice></Page>; if (!item) return <Loading />; return <Page title={item.cropName || item.cropId} action={<Link className="secondary button-link" to={`/cultivations/${cultivationId}/edit`}>編集</Link>}><p className={`badge ${item.status}`}>{statusLabel(item.status)}</p><div className="details"><p><b>栽培ID</b>{item.cultivationId}</p><p><b>圃場 / エリア</b>{item.fieldName || item.fieldId} / {item.areaName || item.areaId}</p><p><b>年度 / 品種 / 季節</b>{item.year}年 / {item.variety || '—'} / {item.season || '—'}</p><p><b>播種 / 定植</b>{item.sowingDate || '—'} / {item.plantingDate || '—'}</p><p><b>備考</b>{item.note || '—'}</p></div><div className="quick record-actions"><Link to={`/cultivations/${cultivationId}/work-logs/new`}>＋ 作業</Link><Link to={`/cultivations/${cultivationId}/harvests/new`}>＋ 収穫</Link><Link to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真</Link></div><div className="tabs"><Link to={`/cultivations/${cultivationId}/work-logs`}>作業</Link><Link to={`/cultivations/${cultivationId}/harvests`}>収穫</Link><Link to={`/cultivations/${cultivationId}/photos`}>写真</Link></div></Page> }
+function Cultivations() { 
+  const [items, setItems] = useState<Cultivation[]>([]); 
+  const [error, setError] = useState(''); 
+  const [fieldItems, setFieldItems] = useState<Field[]>([])
+  const [areaItems, setAreaItems] = useState<Area[]>([])
+  const [cropItems, setCropItems] = useState<Crop[]>([])
+
+  useEffect(() => {
+    Promise.all([
+      cultivations.list(),
+      fields.list(),
+      crops.list(),
+    ])
+      .then(async ([cultivationResult, fieldResult, cropResult]) => {
+        const areaResults = await Promise.all(
+          fieldResult.items.map(field => areas.list(field.fieldId))
+        )
+
+        setItems(cultivationResult.items)
+        setFieldItems(fieldResult.items)
+        setCropItems(cropResult.items)
+        setAreaItems(areaResults.flatMap(result => result.items))
+      })
+      .catch(e => setError(errorMessage(e)))
+  }, [])
+
+  const displayItems = items.map(item => ({
+    ...item,
+    cropName: cropItems.find(crop => crop.cropId === item.cropId)?.name,
+    fieldName: fieldItems.find(field => field.fieldId === item.fieldId)?.name,
+    areaName: areaItems.find(area => area.areaId === item.areaId)?.name,
+  }))
+
+  return <Page title="栽培" action={<Link className="primary button-link" to="/cultivations/new">＋ 栽培を登録</Link>}>{error && <Notice>{error}</Notice>}<div className="card-grid">{displayItems.map(c => <CultivationCard key={c.cultivationId} item={c} />)}</div>{!items.length && !error && <Empty text="栽培記録がありません。" />}</Page> 
+}
+
+function CultivationDetail() { 
+  const { cultivationId = '' } = useParams(); 
+  const [item, setItem] = useState<Cultivation>(); 
+  const [error, setError] = useState(''); 
+  const [fieldItems, setFieldItems] = useState<Field[]>([])
+  const [areaItems, setAreaItems] = useState<Area[]>([])
+  const [cropItems, setCropItems] = useState<Crop[]>([])
+
+  useEffect(() => { 
+    cultivations.get(cultivationId).then(setItem).catch(e => setError(errorMessage(e))) 
+  }, [cultivationId]); 
+
+  useEffect(() => {
+    Promise.all([
+      fields.list(),
+      crops.list(),
+    ])
+      .then(([fieldResult, cropResult]) => {
+        setFieldItems(fieldResult.items)
+        setCropItems(cropResult.items)
+      })
+      .catch(e => setError(errorMessage(e)))
+  }, [])
+
+  useEffect(() => {
+    if (!item?.fieldId) {
+      setAreaItems([])
+      return
+    }
+
+    areas
+      .list(item.fieldId)
+      .then(result => setAreaItems(result.items))
+      .catch(e => setError(errorMessage(e)))
+  }, [item?.fieldId])
+
+  const displayItem = {
+    ...item,
+    cropName: cropItems.find(crop => crop.cropId === item.cropId)?.name,
+    fieldName: fieldItems.find(field => field.fieldId === item.fieldId)?.name,
+    areaName: areaItems.find(area => area.areaId === item.areaId)?.name,
+  }
+
+  if (error) return <Page title="栽培"><Notice>{error}</Notice></Page>; 
+  if (!item) return <Loading />; 
+  return <Page title={displayItem.cropName || displayItem.cropId} action={<Link className="secondary button-link" to={`/cultivations/${cultivationId}/edit`}>編集</Link>}><p className={`badge ${item.status}`}>{statusLabel(item.status)}</p><div className="details"><p><b>栽培ID</b>{item.cultivationId}</p><p><b>圃場 / エリア</b>{displayItem.fieldName || displayItem.fieldId} / {displayItem.areaName || displayItem.areaId}</p><p><b>年度 / 品種 / 季節</b>{item.year}年 / {item.variety || '—'} / {item.season || '—'}</p><p><b>播種 / 定植</b>{item.sowingDate || '—'} / {item.plantingDate || '—'}</p><p><b>備考</b>{item.note || '—'}</p></div><div className="quick record-actions"><Link to={`/cultivations/${cultivationId}/work-logs/new`}>＋ 作業</Link><Link to={`/cultivations/${cultivationId}/harvests/new`}>＋ 収穫</Link><Link to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真</Link></div><div className="tabs"><Link to={`/cultivations/${cultivationId}/work-logs`}>作業</Link><Link to={`/cultivations/${cultivationId}/harvests`}>収穫</Link><Link to={`/cultivations/${cultivationId}/photos`}>写真</Link></div></Page> 
+}
 
 type Kind = 'field' | 'area' | 'crop' | 'cultivation' | 'work' | 'harvest'
 const fieldDefs: Record<Kind, [string, string, string?][]> = { field: [['name', '圃場名', 'text'], ['area', '面積（m²）', 'number'], ['location', '所在地'], ['soilType', '土質'], ['drainage', '排水性'], ['sunlight', '日当たり'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], area: [['name', 'エリア名'], ['areaSize', '面積（m²）', 'number'], ['position', '圃場内の位置'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], crop: [['name', '作物名'], ['category', 'カテゴリ'], ['active', '利用状態', 'boolean'], ['note', '備考', 'textarea']], cultivation: [['year', '栽培年度', 'number'], ['variety', '品種'], ['season', '季節'], ['sowingDate', '播種日', 'date'], ['plantingDate', '定植日', 'date'], ['harvestStartDate', '収穫開始日', 'date'], ['harvestEndDate', '収穫終了日', 'date'], ['completedDate', '完了日', 'date'], ['status', '状態', 'cultivationStatus'], ['note', '備考', 'textarea']], work: [['date', '作業日', 'date'], ['workType', '作業種別', 'workType'], ['description', '作業内容', 'textarea'], ['workMinutes', '作業時間（分）', 'number'], ['workerCount', '作業人数', 'number'], ['weather', '天候'], ['temperature', '気温（℃）', 'number'], ['soilCondition', '土壌状態'], ['beforeCondition', '作業前の状態'], ['afterCondition', '作業後の状態'], ['note', '備考', 'textarea']], harvest: [['harvestDate', '収穫日', 'date'], ['quantity', '収穫量', 'number'], ['unit', '単位'], ['saleQuantity', '販売量', 'number'], ['selfConsumptionQuantity', '自家消費量', 'number'], ['discardQuantity', '廃棄量', 'number'], ['sales', '売上（円）', 'number'], ['salesChannel', '販路'], ['note', '備考', 'textarea']] }
