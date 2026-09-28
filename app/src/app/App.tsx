@@ -132,6 +132,9 @@ function CultivationDetail() {
       .catch(e => setError(errorMessage(e)))
   }, [item?.fieldId])
 
+  if (error) return <Page title="栽培"><Notice>{error}</Notice></Page>; 
+  if (!item) return <Loading />; 
+
   const displayItem = {
     ...item,
     cropName: cropItems.find(crop => crop.cropId === item.cropId)?.name,
@@ -139,8 +142,6 @@ function CultivationDetail() {
     areaName: areaItems.find(area => area.areaId === item.areaId)?.name,
   }
 
-  if (error) return <Page title="栽培"><Notice>{error}</Notice></Page>; 
-  if (!item) return <Loading />; 
   return <Page title={displayItem.cropName || displayItem.cropId} action={<Link className="secondary button-link" to={`/cultivations/${cultivationId}/edit`}>編集</Link>}><p className={`badge ${item.status}`}>{statusLabel(item.status)}</p><div className="details"><p><b>栽培ID</b>{item.cultivationId}</p><p><b>圃場 / エリア</b>{displayItem.fieldName || displayItem.fieldId} / {displayItem.areaName || displayItem.areaId}</p><p><b>年度 / 品種 / 季節</b>{item.year}年 / {item.variety || '—'} / {item.season || '—'}</p><p><b>播種 / 定植</b>{item.sowingDate || '—'} / {item.plantingDate || '—'}</p><p><b>備考</b>{item.note || '—'}</p></div><div className="quick record-actions"><Link to={`/cultivations/${cultivationId}/work-logs/new`}>＋ 作業</Link><Link to={`/cultivations/${cultivationId}/harvests/new`}>＋ 収穫</Link><Link to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真</Link></div><div className="tabs"><Link to={`/cultivations/${cultivationId}/work-logs`}>作業</Link><Link to={`/cultivations/${cultivationId}/harvests`}>収穫</Link><Link to={`/cultivations/${cultivationId}/photos`}>写真</Link></div></Page> 
 }
 
