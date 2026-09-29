@@ -435,6 +435,8 @@ APIの具体的な通信処理は`api/*.ts`へ委譲する。
 - `GET /api/v1/fields/{fieldId}`
 - `GET /api/v1/fields/{fieldId}/areas`
 
+`GET /api/v1/fields/{fieldId}/areas` はAREAリソースのみを返し、CULTIVATION等の子リソースを含めない。
+
 ### FieldFormPage
 
 - 新規：`POST /api/v1/fields`
