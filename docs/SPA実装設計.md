@@ -542,7 +542,7 @@ APIの具体的な通信処理は`api/*.ts`へ委譲する。
 
 - `POST /api/v1/cultivations/{cultivationId}/photos`
 - `multipart/form-data`
-- 最大3MB
+- 最大7MB
 
 削除：
 

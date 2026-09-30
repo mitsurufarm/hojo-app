@@ -37,7 +37,7 @@ Lambda
   最大取得件数         100
   バリデーション       SPAで簡易チェック、Lambdaで最終チェック
   エラー形式           統一JSON形式
-  写真アップロード     `multipart/form-data`、最大3MB
+  写真アップロード     `multipart/form-data`、最大7MB
   写真保存先           Dropbox
   写真表示             LambdaがDropbox一時URLを生成
   CORS                 GitHub Pagesの公開元のみ許可
@@ -330,7 +330,7 @@ POST /api/v1/cultivations/{cultivationId}/photos
 Content-Type: multipart/form-data
 ```
 
-最大3MB。
+最大7MB。
 
 許可形式は JPEG、PNG、WebP とする。LambdaではAPI Gatewayの `isBase64Encoded` を考慮してデコードし、MIMEタイプだけでなくファイル内容も検証する。Dropboxの保存先は `/mitsuru-farm/{cultivationId}/` 配下に統一する。
 
