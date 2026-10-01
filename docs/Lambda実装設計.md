@@ -577,7 +577,7 @@ SPA
 
 実装条件:
 
-- 最大サイズは7MB
+- 最大サイズは5MB
 - 許可形式は JPEG / PNG / WebP
 - API Gateway の `isBase64Encoded` が `true` の場合は Lambda でデコードする
 - MIMEタイプだけでなく、ファイル内容も検証する

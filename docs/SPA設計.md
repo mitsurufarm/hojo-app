@@ -272,7 +272,7 @@ PagedResponse<T>
 
 ## 15. 写真
 
-最大7MB。
+最大5MB。
 
 ```text
 写真選択
