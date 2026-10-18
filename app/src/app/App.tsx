@@ -199,12 +199,23 @@ function CultivationDetail() {
 
 type Kind = 'field' | 'area' | 'crop' | 'cultivation' | 'work' | 'harvest'
 const fieldDefs: Record<Kind, [string, string, string?][]> = { field: [['name', '圃場名', 'text'], ['area', '面積（m²）', 'number'], ['location', '所在地'], ['soilType', '土質'], ['drainage', '排水性'], ['sunlight', '日当たり'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], area: [['name', 'エリア名'], ['areaSize', '面積（m²）', 'number'], ['position', '圃場内の位置'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], crop: [['name', '作物名'], ['category', 'カテゴリ'], ['active', '利用状態', 'boolean'], ['note', '備考', 'textarea']], cultivation: [['year', '栽培年度', 'number'], ['variety', '品種'], ['season', '季節'], ['sowingDate', '播種日', 'date'], ['plantingDate', '定植日', 'date'], ['harvestStartDate', '収穫開始日', 'date'], ['harvestEndDate', '収穫終了日', 'date'], ['completedDate', '完了日', 'date'], ['status', '状態', 'cultivationStatus'], ['note', '備考', 'textarea']], work: [['date', '作業日', 'date'], ['workType', '作業種別', 'workType'], ['description', '作業内容', 'textarea'], ['workMinutes', '作業時間（分）', 'number'], ['workerCount', '作業人数', 'number'], ['weather', '天候'], ['temperature', '気温（℃）', 'number'], ['soilCondition', '土壌状態'], ['beforeCondition', '作業前の状態'], ['afterCondition', '作業後の状態'], ['note', '備考', 'textarea']], harvest: [['harvestDate', '収穫日', 'date'], ['quantity', '収穫量', 'number'], ['unit', '単位'], ['saleQuantity', '販売量', 'number'], ['selfConsumptionQuantity', '自家消費量', 'number'], ['discardQuantity', '廃棄量', 'number'], ['sales', '売上（円）', 'number'], ['salesChannel', '販路'], ['note', '備考', 'textarea']] }
+const todayDate = () => {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+const defaultFormValues = (kind: Kind): Record<string, unknown> => {
+  if (kind === 'crop') return { active: true }
+  if (kind === 'cultivation') return { year: new Date().getFullYear(), status: 'planned' }
+  if (kind === 'work') return { date: todayDate(), workType: workTypes[0] }
+  if (kind === 'harvest') return { harvestDate: todayDate() }
+  return { status: 'active' }
+}
 function FormPage({ kind }: { kind: Kind }) {
   const p = useParams();
   const navigate = useNavigate();
   const id = kind === 'field' ? p.fieldId : kind === 'area' ? p.areaId : kind === 'crop' ? p.cropId : kind === 'cultivation' ? p.cultivationId : kind === 'work' ? p.workLogId : p.harvestId;
   const parent = kind === 'area' ? p.fieldId : ['work', 'harvest'].includes(kind) ? p.cultivationId : undefined;
-  const [values, setValues] = useState<Record<string, unknown>>(kind === 'crop' ? { active: true } : { status: kind === 'cultivation' ? 'planned' : 'active' });
+  const [values, setValues] = useState<Record<string, unknown>>(() => defaultFormValues(kind));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [fieldItems, setFieldItems] = useState<Field[]>([]);
@@ -212,7 +223,10 @@ function FormPage({ kind }: { kind: Kind }) {
   const [cropItems, setCropItems] = useState<Crop[]>([]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setValues(defaultFormValues(kind));
+      return;
+    }
     const get = kind === 'field' ? fields.get(id) : kind === 'area' ? areas.get(parent!, id) : kind === 'crop' ? crops.get(id) : kind === 'cultivation' ? cultivations.get(id) : kind === 'work' ? workLogs.get(parent!, id) : harvests.get(parent!, id);
     get.then((x: unknown) => setValues(x as unknown as Record<string, unknown>)).catch(e => setError(errorMessage(e)))
   }, [id, kind, parent]);
