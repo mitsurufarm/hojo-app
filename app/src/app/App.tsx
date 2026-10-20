@@ -8,6 +8,15 @@ import type { Area, Crop, Cultivation, Field, Harvest, Photo, WorkLog } from '..
 
 const workTypes = ['播種', '定植', '整地', '間引き', '除草', '施肥', '防除', '水やり', '収穫', '片付け', '観察', 'その他']
 const formatArea = (area?: number) => area === undefined ? '—' : `${area.toLocaleString()} m²（${area / 100}a）`
+const summarizeHarvests = (items: Harvest[]): { unit: string; quantity: number }[] => {
+  const totals = new Map<string, number>()
+  for (const item of items) {
+    const unit = (item.unit || '').trim()
+    const prev = totals.get(unit) ?? 0
+    totals.set(unit, Number((prev + (Number(item.quantity) || 0)).toFixed(4)))
+  }
+  return Array.from(totals.entries()).map(([unit, quantity]) => ({ unit, quantity }))
+}
 const errorMessage = (e: unknown) => e instanceof Error ? e.message : '予期しないエラーが発生しました。'
 
 function AppLayout({ children }: { children: ReactNode }) { const { logout, userName } = useAuth(); return <div className="app-shell"><header><Link className="brand" to="/">MITSURU FARM <small>圃場記録</small></Link><nav><NavLink to="/">ホーム</NavLink><NavLink to="/fields">圃場</NavLink><NavLink to="/cultivations">栽培</NavLink><NavLink to="/crops">作物</NavLink></nav><button className="text-button" onClick={() => void logout()}>{userName || 'ログアウト'}</button></header><main>{children}</main><nav className="bottom-nav"><NavLink to="/">⌂<span>ホーム</span></NavLink><NavLink to="/fields">▦<span>圃場</span></NavLink><NavLink to="/cultivations">♧<span>栽培</span></NavLink><NavLink to="/crops">⚙<span>作物</span></NavLink></nav></div> }
@@ -162,10 +171,28 @@ function CultivationDetail() {
   const [fieldItems, setFieldItems] = useState<Field[]>([])
   const [areaItems, setAreaItems] = useState<Area[]>([])
   const [cropItems, setCropItems] = useState<Crop[]>([])
+  const [workItems, setWorkItems] = useState<WorkLog[]>([])
+  const [harvestItems, setHarvestItems] = useState<Harvest[]>([])
+  const [recordsLoading, setRecordsLoading] = useState(true)
+  const [recordFilter, setRecordFilter] = useState<'all' | 'work' | 'harvest'>('all')
 
   useEffect(() => { 
     cultivations.get(cultivationId).then(setItem).catch(e => setError(errorMessage(e))) 
   }, [cultivationId]); 
+
+  useEffect(() => {
+    setRecordsLoading(true)
+    Promise.all([
+      workLogs.list(cultivationId),
+      harvests.list(cultivationId),
+    ])
+      .then(([workResult, harvestResult]) => {
+        setWorkItems(workResult.items)
+        setHarvestItems(harvestResult.items)
+      })
+      .catch(e => setError(errorMessage(e)))
+      .finally(() => setRecordsLoading(false))
+  }, [cultivationId])
 
   useEffect(() => {
     Promise.all([
@@ -201,7 +228,166 @@ function CultivationDetail() {
     areaName: areaItems.find(area => area.areaId === item.areaId)?.name,
   }
 
-  return <Page title={displayItem.cropName || displayItem.cropId} action={<Link className="secondary button-link" to={`/cultivations/${cultivationId}/edit`}>編集</Link>}><p className={`badge ${item.status}`}>{statusLabel(item.status)}</p><div className="details"><p><b>栽培ID</b>{item.cultivationId}</p><p><b>圃場 / エリア</b>{displayItem.fieldName || displayItem.fieldId} / {displayItem.areaName || displayItem.areaId}</p><p><b>年度 / 品種 / 季節</b>{item.year}年 / {item.variety || '—'} / {item.season || '—'}</p><p><b>播種 / 定植</b>{item.sowingDate || '—'} / {item.plantingDate || '—'}</p><p><b>備考</b>{item.note || '—'}</p></div><div className="quick record-actions"><Link to={`/cultivations/${cultivationId}/work-logs/new`}>＋ 作業</Link><Link to={`/cultivations/${cultivationId}/harvests/new`}>＋ 収穫</Link><Link to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真</Link></div><div className="tabs"><Link to={`/cultivations/${cultivationId}/work-logs`}>作業</Link><Link to={`/cultivations/${cultivationId}/harvests`}>収穫</Link><Link to={`/cultivations/${cultivationId}/photos`}>写真</Link></div></Page> 
+  const harvestTotals = summarizeHarvests(harvestItems)
+  const harvestTotalsText = harvestTotals.length
+    ? harvestTotals.map(t => `${t.quantity.toLocaleString()} ${t.unit}`).join(' / ')
+    : '—'
+
+  type TimelineRecord =
+    | { kind: 'work'; date: string; id: string; work: WorkLog }
+    | { kind: 'harvest'; date: string; id: string; harvest: Harvest }
+
+  const timelineRecords: TimelineRecord[] = [
+    ...(recordFilter !== 'harvest'
+      ? workItems.map((w): TimelineRecord => ({ kind: 'work', date: w.date, id: w.workLogId, work: w }))
+      : []),
+    ...(recordFilter !== 'work'
+      ? harvestItems.map((h): TimelineRecord => ({ kind: 'harvest', date: h.harvestDate, id: h.harvestId, harvest: h }))
+      : []),
+  ]
+
+  const groupedByDate = Array.from(
+    timelineRecords.reduce((map, rec) => {
+      const list = map.get(rec.date) ?? []
+      list.push(rec)
+      map.set(rec.date, list)
+      return map
+    }, new Map<string, TimelineRecord[]>())
+  ).sort(([a], [b]) => b.localeCompare(a))
+
+  return <Page title={displayItem.cropName || displayItem.cropId} action={<Link className="secondary button-link" to={`/cultivations/${cultivationId}/edit`}>編集</Link>}>
+    <p className={`badge ${item.status}`}>{statusLabel(item.status)}</p>
+    <div className="details">
+      <p><b>栽培ID</b>{item.cultivationId}</p>
+      <p><b>圃場 / エリア</b>{displayItem.fieldName || displayItem.fieldId} / {displayItem.areaName || displayItem.areaId}</p>
+      <p><b>年度 / 品種 / 季節</b>{item.year}年 / {item.variety || '—'} / {item.season || '—'}</p>
+      <p><b>播種 / 定植</b>{item.sowingDate || '—'} / {item.plantingDate || '—'}</p>
+      <p><b>収穫量合計</b>{recordsLoading ? '読み込み中…' : harvestTotalsText}</p>
+      <p><b>備考</b>{item.note || '—'}</p>
+    </div>
+
+    <div className="quick record-actions">
+      <Link to={`/cultivations/${cultivationId}/work-logs/new`}>＋ 作業</Link>
+      <Link to={`/cultivations/${cultivationId}/harvests/new`}>＋ 収穫</Link>
+      <Link to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真</Link>
+      <Link to={`/cultivations/${cultivationId}/photos`}>写真一覧</Link>
+    </div>
+
+    <section className="cultivation-records">
+      <div className="records-header">
+        <h2>作業・収穫の記録</h2>
+        <div className="filter-chips">
+          <button
+            type="button"
+            className={`map-chip ${recordFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setRecordFilter('all')}
+          >
+            すべて（{workItems.length + harvestItems.length}）
+          </button>
+          <button
+            type="button"
+            className={`map-chip ${recordFilter === 'work' ? 'active' : ''}`}
+            onClick={() => setRecordFilter('work')}
+          >
+            作業（{workItems.length}）
+          </button>
+          <button
+            type="button"
+            className={`map-chip ${recordFilter === 'harvest' ? 'active' : ''}`}
+            onClick={() => setRecordFilter('harvest')}
+          >
+            収穫（{harvestItems.length}）
+          </button>
+        </div>
+      </div>
+
+      {!recordsLoading && harvestTotals.length > 0 && recordFilter !== 'work' && (
+        <div className="harvest-summary-box">
+          <span className="harvest-summary-label">収穫量合計（単位別）</span>
+          <div className="harvest-summary-chips">
+            {harvestTotals.map(t => (
+              <span key={t.unit} className="harvest-total-pill">
+                <b>{t.quantity.toLocaleString()}</b> {t.unit}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recordsLoading ? (
+        <Empty text="読み込み中…" />
+      ) : groupedByDate.length ? (
+        <div className="date-groups">
+          {groupedByDate.map(([date, records]) => (
+            <div key={date} className="date-group">
+              <h3 className="date-group-head">{date}</h3>
+              <div className="list">
+                {records.map(rec =>
+                  rec.kind === 'work' ? (
+                    <Link
+                      key={`work-${rec.id}`}
+                      className="list-row"
+                      to={`/cultivations/${cultivationId}/work-logs/${rec.id}/edit`}
+                    >
+                      <span>
+                        <b>
+                          <span className="record-type-badge work">作業</span>
+                          {rec.work.workType}
+                        </b>
+                        <small>
+                          {[
+                            rec.work.description || '内容未入力',
+                            rec.work.workMinutes !== undefined ? `${rec.work.workMinutes}分` : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ・ ')}
+                        </small>
+                      </span>
+                      <span>›</span>
+                    </Link>
+                  ) : (
+                    <Link
+                      key={`harvest-${rec.id}`}
+                      className="list-row"
+                      to={`/cultivations/${cultivationId}/harvests/${rec.id}/edit`}
+                    >
+                      <span>
+                        <b>
+                          <span className="record-type-badge harvest">収穫</span>
+                          {rec.harvest.quantity.toLocaleString()} {rec.harvest.unit}
+                        </b>
+                        <small>
+                          {[
+                            rec.harvest.saleQuantity !== undefined ? `販売 ${rec.harvest.saleQuantity.toLocaleString()} ${rec.harvest.unit}` : '',
+                            rec.harvest.selfConsumptionQuantity !== undefined ? `自家消費 ${rec.harvest.selfConsumptionQuantity.toLocaleString()} ${rec.harvest.unit}` : '',
+                            rec.harvest.discardQuantity !== undefined ? `廃棄 ${rec.harvest.discardQuantity.toLocaleString()} ${rec.harvest.unit}` : '',
+                            rec.harvest.note || '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ・ ') || '詳細未入力'}
+                        </small>
+                      </span>
+                      <span>›</span>
+                    </Link>
+                  )
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Empty
+          text={
+            recordFilter === 'work'
+              ? '作業記録がありません。'
+              : recordFilter === 'harvest'
+                ? '収穫記録がありません。'
+                : '作業・収穫記録がありません。'
+          }
+        />
+      )}
+    </section>
+  </Page> 
 }
 
 type Kind = 'field' | 'area' | 'crop' | 'cultivation' | 'work' | 'harvest'
@@ -371,7 +557,7 @@ function FormPage({ kind }: { kind: Kind }) {
 function FormControl({ label, name, type = 'text', value, onChange }: { label: string; name: string; type?: string; value: unknown; onChange: (v: string | boolean) => void }) { if (type === 'textarea') return <label>{label}<textarea value={String(value ?? '')} onChange={e => onChange(e.target.value)} /></label>; if (type === 'boolean') return <label className="check"><input type="checkbox" checked={Boolean(value)} onChange={e => onChange(e.target.checked)} />利用可能にする</label>; if (type === 'select' || type === 'cultivationStatus' || type === 'workType') { const options = type === 'cultivationStatus' ? [['planned', '予定'], ['growing', '栽培中'], ['completed', '完了'], ['failed', '中止']] : type === 'workType' ? workTypes.map(v => [v, v]) : [['active', '使用中'], ['inactive', '休止']]; return <label>{label}<select value={String(value ?? '')} onChange={e => onChange(e.target.value)}>{options.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label> } return <label>{label}<input name={name} type={type as HTMLInputTypeAttribute} step={type === 'number' ? 'any' : undefined} value={String(value ?? '')} onChange={e => onChange(e.target.value)} required={['name', 'area', 'areaSize', 'fieldId', 'areaId', 'cropId', 'year', 'date', 'workType', 'quantity', 'unit', 'harvestDate'].includes(name)} /></label> }
 
 function Crops() { const [items, setItems] = useState<Crop[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); useEffect(() => { setLoading(true); crops.list().then(v => setItems(v.items)).catch(e => setError(errorMessage(e))).finally(() => setLoading(false)) }, []); return <Page title="作物" action={<Link className="primary button-link" to="/crops/new">＋ 作物を追加</Link>}>{error && <Notice>{error}</Notice>}{loading ? <Empty text="読み込み中…" /> : <><div className="list">{items.map(c => <Link className="list-row" key={c.cropId} to={`/crops/${c.cropId}/edit`}><span><b>{c.name}</b><small>{c.category || '未分類'} ・ {c.active ? '利用中' : '利用停止'}</small></span><span>›</span></Link>)}</div>{!items.length && !error && <Empty text="作物がありません。" />}</>}</Page> }
-function RecordList({ type }: { type: 'work' | 'harvest' }) { const { cultivationId = '' } = useParams(); const [items, setItems] = useState<(WorkLog | Harvest)[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); useEffect(() => { setLoading(true); (type === 'work' ? workLogs.list(cultivationId) : harvests.list(cultivationId)).then(v => setItems(v.items)).catch(e => setError(errorMessage(e))).finally(() => setLoading(false)) }, [cultivationId, type]); const label = type === 'work' ? '作業' : '収穫'; return <Page title={label} action={<Link className="primary button-link" to={`/cultivations/${cultivationId}/${type === 'work' ? 'work-logs' : 'harvests'}/new`}>＋ {label}を追加</Link>}>{error && <Notice>{error}</Notice>}{loading ? <Empty text="読み込み中…" /> : <><div className="list">{items.map(item => { const work = type === 'work'; const id = work ? (item as WorkLog).workLogId : (item as Harvest).harvestId; const date = work ? (item as WorkLog).date : (item as Harvest).harvestDate; return <Link className="list-row" key={id} to={`/cultivations/${cultivationId}/${work ? 'work-logs' : 'harvests'}/${id}/edit`}><span><b>{date}　{work ? (item as WorkLog).workType : `${(item as Harvest).quantity} ${(item as Harvest).unit}`}</b><small>{work ? (item as WorkLog).description || '内容未入力' : `販売 ${(item as Harvest).saleQuantity ?? 0} ${(item as Harvest).unit}`}</small></span><span>›</span></Link> })}</div>{!items.length && !error && <Empty text={`${label}記録がありません。`} />}</>}</Page> }
+function RecordList({ type }: { type: 'work' | 'harvest' }) { const { cultivationId = '' } = useParams(); const [items, setItems] = useState<(WorkLog | Harvest)[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); useEffect(() => { setLoading(true); (type === 'work' ? workLogs.list(cultivationId) : harvests.list(cultivationId)).then(v => setItems(v.items)).catch(e => setError(errorMessage(e))).finally(() => setLoading(false)) }, [cultivationId, type]); const label = type === 'work' ? '作業' : '収穫'; const harvestTotals = type === 'harvest' ? summarizeHarvests(items as Harvest[]) : []; return <Page title={label} action={<Link className="primary button-link" to={`/cultivations/${cultivationId}/${type === 'work' ? 'work-logs' : 'harvests'}/new`}>＋ {label}を追加</Link>}>{error && <Notice>{error}</Notice>}{loading ? <Empty text="読み込み中…" /> : <>{type === 'harvest' && harvestTotals.length > 0 && <div className="harvest-summary-box"><span className="harvest-summary-label">収穫量合計（単位別）</span><div className="harvest-summary-chips">{harvestTotals.map(t => <span key={t.unit} className="harvest-total-pill"><b>{t.quantity.toLocaleString()}</b> {t.unit}</span>)}</div></div>}<div className="list">{items.map(item => { const work = type === 'work'; const id = work ? (item as WorkLog).workLogId : (item as Harvest).harvestId; const date = work ? (item as WorkLog).date : (item as Harvest).harvestDate; return <Link className="list-row" key={id} to={`/cultivations/${cultivationId}/${work ? 'work-logs' : 'harvests'}/${id}/edit`}><span><b>{date}　{work ? (item as WorkLog).workType : `${(item as Harvest).quantity} ${(item as Harvest).unit}`}</b><small>{work ? (item as WorkLog).description || '内容未入力' : `販売 ${(item as Harvest).saleQuantity ?? 0} ${(item as Harvest).unit}`}</small></span><span>›</span></Link> })}</div>{!items.length && !error && <Empty text={`${label}記録がありません。`} />}</>}</Page> }
 function Photos() { const { cultivationId = '' } = useParams(); const [items, setItems] = useState<Photo[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); useEffect(() => { setLoading(true); photos.list(cultivationId).then(v => setItems(v.items)).catch(e => setError(errorMessage(e))).finally(() => setLoading(false)) }, [cultivationId]); return <Page title="写真" action={<Link className="primary button-link" to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真を追加</Link>}>{error && <Notice>{error}</Notice>}{loading ? <Empty text="読み込み中…" /> : <><div className="photo-grid">{items.map(p => <figure key={p.photoId}>{p.url ? <img src={p.url} alt={p.caption || '栽培写真'} /> : <div className="photo-placeholder">写真</div>}<figcaption>{p.caption || '説明なし'}</figcaption></figure>)}</div>{!items.length && !error && <Empty text="写真がありません。" />}</>}</Page> }
 function PhotoUpload() { const { cultivationId = '' } = useParams(); const navigate = useNavigate(); const [file, setFile] = useState<File>(); const [caption, setCaption] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const submit = async (e: FormEvent) => { e.preventDefault(); if (!file) return setError('写真を選択してください。'); if (file.size > 5 * 1024 * 1024) return setError('写真は5MB以下にしてください。'); setSaving(true); try { const form = new FormData(); form.append('file', file); form.append('caption', caption); await photos.upload(cultivationId, form); navigate(`/cultivations/${cultivationId}/photos`) } catch (e) { setError(errorMessage(e)); setSaving(false) } }; return <Page title="写真を追加"><form className="form" onSubmit={submit}><label>写真ファイル<input type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0])} /></label><label>キャプション<input value={caption} onChange={e => setCaption(e.target.value)} /></label><p className="hint">最大5MB。Dropboxの認証情報はブラウザには保存されません。</p>{error && <Notice>{error}</Notice>}<button className="primary" disabled={saving}>{saving ? 'アップロード中…' : 'アップロード'}</button></form></Page> }
 function NotFound() { return <Page title="ページが見つかりません"><Link to="/">ホームへ戻る</Link></Page> }
