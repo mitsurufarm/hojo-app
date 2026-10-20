@@ -603,6 +603,7 @@ function RoutesView() {
 }
 
 export function App() {
-  const restored = new URLSearchParams(window.location.search).get('redirect')
-  return <AuthProvider>{restored?.startsWith('/') ? <Navigate to={restored} replace /> : <RoutesView />}</AuthProvider>
+  const rawRedirect = new URLSearchParams(window.location.search).get('redirect')
+  const restored = rawRedirect?.startsWith('/') ? (rawRedirect.replace(/^\/hojo-app(?=\/|$)/, '') || '/') : null
+  return <AuthProvider>{restored ? <Navigate to={restored} replace /> : <RoutesView />}</AuthProvider>
 }
