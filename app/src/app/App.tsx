@@ -3,6 +3,7 @@ import { Link, Navigate, NavLink, Route, Routes, useNavigate, useParams } from '
 import { AuthProvider, useAuth } from '../auth/AuthContext'
 import { authConfigured } from '../auth/cognito'
 import { areas, crops, cultivations, fields, harvests, photos, workLogs } from '../api/resources'
+import { FieldMapPicker } from '../components/FieldMapPicker'
 import type { Area, Crop, Cultivation, Field, Harvest, Photo, WorkLog } from '../types'
 
 const workTypes = ['播種', '定植', '整地', '間引き', '除草', '施肥', '防除', '水やり', '収穫', '片付け', '観察', 'その他']
@@ -57,7 +58,7 @@ function CultivationCard({ item }: { item: Cultivation }) { return <Link classNa
 const statusLabel = (status: string) => ({ planned: '予定', growing: '栽培中', completed: '完了', failed: '中止', active: '使用中', inactive: '休止' } as Record<string, string>)[status] || status
 
 function Fields() { const [items, setItems] = useState<Field[]>([]); const [error, setError] = useState(''); useEffect(() => { fields.list().then(v => setItems(v.items)).catch(e => setError(errorMessage(e))) }, []); return <Page title="圃場" action={<Link className="primary button-link" to="/fields/new">＋ 圃場を追加</Link>}>{error && <Notice>{error}</Notice>}<div className="card-grid">{items.map(f => <Link className="card" key={f.fieldId} to={`/fields/${f.fieldId}`}><span className="badge">{statusLabel(f.status)}</span><h3>{f.name}</h3><p>{formatArea(f.area)}</p><p>{f.location || '所在地未登録'}</p></Link>)}</div>{!items.length && !error && <Empty text="圃場がありません。最初の圃場を追加してください。" />}</Page> }
-function FieldDetail() { const { fieldId = '' } = useParams(); const [field, setField] = useState<Field>(); const [items, setItems] = useState<Area[]>([]); const [error, setError] = useState(''); useEffect(() => { Promise.all([fields.get(fieldId), areas.list(fieldId)]).then(([f, a]) => { setField(f); setItems(a.items) }).catch(e => setError(errorMessage(e))) }, [fieldId]); if (error) return <Page title="圃場"><Notice>{error}</Notice></Page>; if (!field) return <Loading />; return <Page title={field.name} action={<Link className="secondary button-link" to={`/fields/${fieldId}/edit`}>編集</Link>}><div className="details"><p><b>面積</b>{formatArea(field.area)}</p><p><b>所在地</b>{field.location || '—'}</p><p><b>緯度 / 経度</b>{field.latitude !== undefined && field.longitude !== undefined ? `${field.latitude}, ${field.longitude}` : '—'}</p><p><b>土質 / 排水性 / 日当たり</b>{[field.soilType, field.drainage, field.sunlight].filter(Boolean).join(' / ') || '—'}</p><p><b>備考</b>{field.note || '—'}</p></div><div className="section-head"><h2>エリア</h2><Link to={`/fields/${fieldId}/areas/new`}>＋ 追加</Link></div><div className="list">{items.map(a => <Link key={a.areaId} className="list-row" to={`/fields/${fieldId}/areas/${a.areaId}`}><span><b>{a.name}</b><small>{formatArea(a.areaSize)} ・ {statusLabel(a.status)}</small></span><span>›</span></Link>)}</div>{!items.length && <Empty text="エリアがありません。" />}</Page> }
+function FieldDetail() { const { fieldId = '' } = useParams(); const [field, setField] = useState<Field>(); const [items, setItems] = useState<Area[]>([]); const [error, setError] = useState(''); useEffect(() => { Promise.all([fields.get(fieldId), areas.list(fieldId)]).then(([f, a]) => { setField(f); setItems(a.items) }).catch(e => setError(errorMessage(e))) }, [fieldId]); if (error) return <Page title="圃場"><Notice>{error}</Notice></Page>; if (!field) return <Loading />; return <Page title={field.name} action={<Link className="secondary button-link" to={`/fields/${fieldId}/edit`}>編集</Link>}><div className="details"><p><b>面積</b>{formatArea(field.area)}</p><p><b>所在地</b>{field.location || '—'}</p><p><b>緯度 / 経度</b>{field.latitude !== undefined && field.longitude !== undefined ? `${field.latitude}, ${field.longitude}` : '—'}</p><p><b>土質 / 排水性 / 日当たり</b>{[field.soilType, field.drainage, field.sunlight].filter(Boolean).join(' / ') || '—'}</p><p><b>備考</b>{field.note || '—'}</p></div>{field.latitude !== undefined && field.longitude !== undefined && <FieldMapPicker latitude={field.latitude} longitude={field.longitude} />}<div className="section-head"><h2>エリア</h2><Link to={`/fields/${fieldId}/areas/new`}>＋ 追加</Link></div><div className="list">{items.map(a => <Link key={a.areaId} className="list-row" to={`/fields/${fieldId}/areas/${a.areaId}`}><span><b>{a.name}</b><small>{formatArea(a.areaSize)} ・ {statusLabel(a.status)}</small></span><span>›</span></Link>)}</div>{!items.length && <Empty text="エリアがありません。" />}</Page> }
 
 function AreaDetail() {
   const { fieldId = '', areaId = '' } = useParams()
@@ -199,7 +200,7 @@ function CultivationDetail() {
 
 type Kind = 'field' | 'area' | 'crop' | 'cultivation' | 'work' | 'harvest'
 const numberKeys = ['area', 'areaSize', 'latitude', 'longitude', 'year', 'workMinutes', 'workerCount', 'quantity', 'saleQuantity', 'selfConsumptionQuantity', 'discardQuantity', 'sales']
-const fieldDefs: Record<Kind, [string, string, string?][]> = { field: [['name', '圃場名', 'text'], ['area', '面積（m²）', 'number'], ['location', '所在地'], ['latitude', '緯度', 'number'], ['longitude', '経度', 'number'], ['soilType', '土質'], ['drainage', '排水性'], ['sunlight', '日当たり'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], area: [['name', 'エリア名'], ['areaSize', '面積（m²）', 'number'], ['position', '圃場内の位置'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], crop: [['name', '作物名'], ['category', 'カテゴリ'], ['active', '利用状態', 'boolean'], ['note', '備考', 'textarea']], cultivation: [['year', '栽培年度', 'number'], ['variety', '品種'], ['season', '季節'], ['sowingDate', '播種日', 'date'], ['plantingDate', '定植日', 'date'], ['harvestStartDate', '収穫開始日', 'date'], ['harvestEndDate', '収穫終了日', 'date'], ['completedDate', '完了日', 'date'], ['status', '状態', 'cultivationStatus'], ['note', '備考', 'textarea']], work: [['date', '作業日', 'date'], ['workType', '作業種別', 'workType'], ['description', '作業内容', 'textarea'], ['workMinutes', '作業時間（分）', 'number'], ['workerCount', '作業人数', 'number'], ['soilCondition', '土壌状態'], ['beforeCondition', '作業前の状態'], ['afterCondition', '作業後の状態'], ['note', '備考', 'textarea']], harvest: [['harvestDate', '収穫日', 'date'], ['quantity', '収穫量', 'number'], ['unit', '単位'], ['saleQuantity', '販売量', 'number'], ['selfConsumptionQuantity', '自家消費量', 'number'], ['discardQuantity', '廃棄量', 'number'], ['sales', '売上（円）', 'number'], ['salesChannel', '販路'], ['note', '備考', 'textarea']] }
+const fieldDefs: Record<Kind, [string, string, string?][]> = { field: [['name', '圃場名', 'text'], ['area', '面積（m²）', 'number'], ['location', '所在地'], ['soilType', '土質'], ['drainage', '排水性'], ['sunlight', '日当たり'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], area: [['name', 'エリア名'], ['areaSize', '面積（m²）', 'number'], ['position', '圃場内の位置'], ['status', '状態', 'select'], ['note', '備考', 'textarea']], crop: [['name', '作物名'], ['category', 'カテゴリ'], ['active', '利用状態', 'boolean'], ['note', '備考', 'textarea']], cultivation: [['year', '栽培年度', 'number'], ['variety', '品種'], ['season', '季節'], ['sowingDate', '播種日', 'date'], ['plantingDate', '定植日', 'date'], ['harvestStartDate', '収穫開始日', 'date'], ['harvestEndDate', '収穫終了日', 'date'], ['completedDate', '完了日', 'date'], ['status', '状態', 'cultivationStatus'], ['note', '備考', 'textarea']], work: [['date', '作業日', 'date'], ['workType', '作業種別', 'workType'], ['description', '作業内容', 'textarea'], ['workMinutes', '作業時間（分）', 'number'], ['workerCount', '作業人数', 'number'], ['soilCondition', '土壌状態'], ['beforeCondition', '作業前の状態'], ['afterCondition', '作業後の状態'], ['note', '備考', 'textarea']], harvest: [['harvestDate', '収穫日', 'date'], ['quantity', '収穫量', 'number'], ['unit', '単位'], ['saleQuantity', '販売量', 'number'], ['selfConsumptionQuantity', '自家消費量', 'number'], ['discardQuantity', '廃棄量', 'number'], ['sales', '売上（円）', 'number'], ['salesChannel', '販路'], ['note', '備考', 'textarea']] }
 const todayDate = () => {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -333,14 +334,22 @@ function FormPage({ kind }: { kind: Kind }) {
       </>}
 
       {fieldDefs[kind].map(([key, label, type]) =>
-        <FormControl
-          key={key}
-          label={label}
-          name={key}
-          type={type}
-          value={values[key]}
-          onChange={v => setValues(x => ({ ...x, [key]: v }))}
-        />
+        <div key={key} className="form-item">
+          <FormControl
+            label={label}
+            name={key}
+            type={type}
+            value={values[key]}
+            onChange={v => setValues(x => ({ ...x, [key]: v }))}
+          />
+          {kind === 'field' && key === 'location' && (
+            <FieldMapPicker
+              latitude={values.latitude}
+              longitude={values.longitude}
+              onChange={(lat, lon) => setValues(x => ({ ...x, latitude: lat, longitude: lon }))}
+            />
+          )}
+        </div>
       )}
 
       {error && <Notice>{error}</Notice>}
