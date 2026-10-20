@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from '../auth/AuthContext'
 import { authConfigured } from '../auth/cognito'
 import { areas, crops, cultivations, fields, harvests, photos, workLogs } from '../api/resources'
 import { FieldMapPicker } from '../components/FieldMapPicker'
-import type { Area, Crop, Cultivation, Field, Harvest, Photo, WorkLog } from '../types'
+import type { Area, Crop, Cultivation, Field, Harvest, Photo, WeatherRecord, WorkLog } from '../types'
 
 const workTypes = ['播種', '定植', '整地', '間引き', '除草', '施肥', '防除', '水やり', '収穫', '片付け', '観察', 'その他']
 const formatArea = (area?: number) => area === undefined ? '—' : `${area.toLocaleString()} m²（${area / 100}a）`
@@ -19,7 +19,7 @@ const summarizeHarvests = (items: Harvest[]): { unit: string; quantity: number }
 }
 const errorMessage = (e: unknown) => e instanceof Error ? e.message : '予期しないエラーが発生しました。'
 
-function AppLayout({ children }: { children: ReactNode }) { const { logout, userName } = useAuth(); return <div className="app-shell"><header><Link className="brand" to="/">MITSURU FARM <small>圃場記録</small></Link><nav><NavLink to="/">ホーム</NavLink><NavLink to="/fields">圃場</NavLink><NavLink to="/cultivations">栽培</NavLink><NavLink to="/crops">作物</NavLink></nav><button className="text-button" onClick={() => void logout()}>{userName || 'ログアウト'}</button></header><main>{children}</main><nav className="bottom-nav"><NavLink to="/">⌂<span>ホーム</span></NavLink><NavLink to="/fields">▦<span>圃場</span></NavLink><NavLink to="/cultivations">♧<span>栽培</span></NavLink><NavLink to="/crops">⚙<span>作物</span></NavLink></nav></div> }
+function AppLayout({ children }: { children: ReactNode }) { const { logout, userName } = useAuth(); return <div className="app-shell"><header><Link className="brand" to="/">MITSURU FARM <small>圃場記録</small></Link><nav><NavLink to="/">ホーム</NavLink><NavLink to="/fields">圃場</NavLink><NavLink to="/cultivations">栽培</NavLink><NavLink to="/crops">作物</NavLink><NavLink to="/export">データ出力</NavLink></nav><button className="text-button" onClick={() => void logout()}>{userName || 'ログアウト'}</button></header><main>{children}</main><nav className="bottom-nav"><NavLink to="/">⌂<span>ホーム</span></NavLink><NavLink to="/fields">▦<span>圃場</span></NavLink><NavLink to="/cultivations">♧<span>栽培</span></NavLink><NavLink to="/crops">⚙<span>作物</span></NavLink><NavLink to="/export">⇩<span>出力</span></NavLink></nav></div> }
 function Protected({ children }: { children: ReactNode }) { const { loading, authenticated } = useAuth(); if (loading) return <Loading />; return authenticated ? <AppLayout>{children}</AppLayout> : <Navigate to="/login" replace /> }
 function Loading() { return <div className="loading">読み込み中…</div> }
 function Page({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) { return <section className="page"><div className="page-head"><div><p className="eyebrow">MITSURU FARM</p><h1>{title}</h1></div>{action}</div>{children}</section> }
@@ -62,7 +62,7 @@ function Home() {
     areaName: areaItems.find(area => area.areaId === item.areaId)?.name,
   }))
 
-  return <Page title="ホーム" action={<Link className="primary button-link" to="/cultivations/new">＋ 栽培を登録</Link>}>{error && <Notice>{error}</Notice>}<h2>現在栽培中</h2>{loading ? <Empty text="読み込み中…" /> : items.length ? <div className="card-grid">{displayItems.map(c => <CultivationCard key={c.cultivationId} item={c} />)}</div> : <Empty text="現在栽培中の作物はありません。" />}<section className="quick"><h2>クイック操作</h2><div><Link to="/cultivations">栽培を見る</Link><Link to="/fields">圃場を管理</Link><Link to="/crops">作物を管理</Link></div></section></Page> 
+  return <Page title="ホーム" action={<Link className="primary button-link" to="/cultivations/new">＋ 栽培を登録</Link>}>{error && <Notice>{error}</Notice>}<h2>現在栽培中</h2>{loading ? <Empty text="読み込み中…" /> : items.length ? <div className="card-grid">{displayItems.map(c => <CultivationCard key={c.cultivationId} item={c} />)}</div> : <Empty text="現在栽培中の作物はありません。" />}<section className="quick"><h2>クイック操作</h2><div><Link to="/cultivations">栽培を見る</Link><Link to="/fields">圃場を管理</Link><Link to="/crops">作物を管理</Link><Link to="/export">データ一括出力（JSON）</Link></div></section></Page> 
 }
 
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div> }
@@ -560,6 +560,218 @@ function Crops() { const [items, setItems] = useState<Crop[]>([]); const [loadin
 function RecordList({ type }: { type: 'work' | 'harvest' }) { const { cultivationId = '' } = useParams(); const [items, setItems] = useState<(WorkLog | Harvest)[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); useEffect(() => { setLoading(true); (type === 'work' ? workLogs.list(cultivationId) : harvests.list(cultivationId)).then(v => setItems(v.items)).catch(e => setError(errorMessage(e))).finally(() => setLoading(false)) }, [cultivationId, type]); const label = type === 'work' ? '作業' : '収穫'; const harvestTotals = type === 'harvest' ? summarizeHarvests(items as Harvest[]) : []; return <Page title={label} action={<Link className="primary button-link" to={`/cultivations/${cultivationId}/${type === 'work' ? 'work-logs' : 'harvests'}/new`}>＋ {label}を追加</Link>}>{error && <Notice>{error}</Notice>}{loading ? <Empty text="読み込み中…" /> : <>{type === 'harvest' && harvestTotals.length > 0 && <div className="harvest-summary-box"><span className="harvest-summary-label">収穫量合計（単位別）</span><div className="harvest-summary-chips">{harvestTotals.map(t => <span key={t.unit} className="harvest-total-pill"><b>{t.quantity.toLocaleString()}</b> {t.unit}</span>)}</div></div>}<div className="list">{items.map(item => { const work = type === 'work'; const id = work ? (item as WorkLog).workLogId : (item as Harvest).harvestId; const date = work ? (item as WorkLog).date : (item as Harvest).harvestDate; return <Link className="list-row" key={id} to={`/cultivations/${cultivationId}/${work ? 'work-logs' : 'harvests'}/${id}/edit`}><span><b>{date}　{work ? (item as WorkLog).workType : `${(item as Harvest).quantity} ${(item as Harvest).unit}`}</b><small>{work ? (item as WorkLog).description || '内容未入力' : `販売 ${(item as Harvest).saleQuantity ?? 0} ${(item as Harvest).unit}`}</small></span><span>›</span></Link> })}</div>{!items.length && !error && <Empty text={`${label}記録がありません。`} />}</>}</Page> }
 function Photos() { const { cultivationId = '' } = useParams(); const [items, setItems] = useState<Photo[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); useEffect(() => { setLoading(true); photos.list(cultivationId).then(v => setItems(v.items)).catch(e => setError(errorMessage(e))).finally(() => setLoading(false)) }, [cultivationId]); return <Page title="写真" action={<Link className="primary button-link" to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真を追加</Link>}>{error && <Notice>{error}</Notice>}{loading ? <Empty text="読み込み中…" /> : <><div className="photo-grid">{items.map(p => <figure key={p.photoId}>{p.url ? <img src={p.url} alt={p.caption || '栽培写真'} /> : <div className="photo-placeholder">写真</div>}<figcaption>{p.caption || '説明なし'}</figcaption></figure>)}</div>{!items.length && !error && <Empty text="写真がありません。" />}</>}</Page> }
 function PhotoUpload() { const { cultivationId = '' } = useParams(); const navigate = useNavigate(); const [file, setFile] = useState<File>(); const [caption, setCaption] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const submit = async (e: FormEvent) => { e.preventDefault(); if (!file) return setError('写真を選択してください。'); if (file.size > 5 * 1024 * 1024) return setError('写真は5MB以下にしてください。'); setSaving(true); try { const form = new FormData(); form.append('file', file); form.append('caption', caption); await photos.upload(cultivationId, form); navigate(`/cultivations/${cultivationId}/photos`) } catch (e) { setError(errorMessage(e)); setSaving(false) } }; return <Page title="写真を追加"><form className="form" onSubmit={submit}><label>写真ファイル<input type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0])} /></label><label>キャプション<input value={caption} onChange={e => setCaption(e.target.value)} /></label><p className="hint">最大5MB。Dropboxの認証情報はブラウザには保存されません。</p>{error && <Notice>{error}</Notice>}<button className="primary" disabled={saving}>{saving ? 'アップロード中…' : 'アップロード'}</button></form></Page> }
+function ExportPage() {
+  const [startDate, setStartDate] = useState(() => `${new Date().getFullYear()}-01-01`)
+  const [endDate, setEndDate] = useState(() => todayDate())
+  const [includeHourly, setIncludeHourly] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [error, setError] = useState('')
+  const [lastSummary, setLastSummary] = useState<string>('')
+
+  const handleExport = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!startDate || !endDate) {
+      setError('開始日と終了日を指定してください。')
+      return
+    }
+    if (startDate > endDate) {
+      setError('開始日は終了日以前の日付を指定してください。')
+      return
+    }
+    setExporting(true)
+    setError('')
+    setLastSummary('')
+
+    try {
+      const [fieldRes, cropRes, cultivationRes] = await Promise.all([
+        fields.list(),
+        crops.list(),
+        cultivations.list(),
+      ])
+
+      const fieldList = fieldRes.items
+      const cropList = cropRes.items
+      const cultivationList = cultivationRes.items
+
+      const [areaResults, weatherResults] = await Promise.all([
+        Promise.all(fieldList.map(f => areas.list(f.fieldId))),
+        Promise.all(
+          fieldList.map(f =>
+            fields
+              .weather(f.fieldId, startDate, endDate, includeHourly)
+              .then(res => ({ field: f, items: res.items }))
+              .catch(() => ({ field: f, items: [] as WeatherRecord[] }))
+          )
+        ),
+      ])
+
+      const areaList = areaResults.flatMap(r => r.items)
+      const fieldNameMap = new Map(fieldList.map(f => [f.fieldId, f.name]))
+      const areaNameMap = new Map(areaList.map(a => [a.areaId, a.name]))
+      const cropNameMap = new Map(cropList.map(c => [c.cropId, c.name]))
+
+      const cultivationRecordResults = await Promise.all(
+        cultivationList.map(async c => {
+          const [wRes, hRes] = await Promise.all([
+            workLogs.list(c.cultivationId),
+            harvests.list(c.cultivationId),
+          ])
+          const filteredWorkLogs = wRes.items
+            .filter(w => w.date >= startDate && w.date <= endDate)
+            .sort((a, b) => a.date.localeCompare(b.date))
+          const filteredHarvests = hRes.items
+            .filter(h => h.harvestDate >= startDate && h.harvestDate <= endDate)
+            .sort((a, b) => a.harvestDate.localeCompare(b.harvestDate))
+          return {
+            cultivation: c,
+            workLogs: filteredWorkLogs,
+            harvests: filteredHarvests,
+          }
+        })
+      )
+
+      const enrichedCultivations = cultivationRecordResults.map(({ cultivation: c, workLogs: wList, harvests: hList }) => ({
+        ...c,
+        fieldName: fieldNameMap.get(c.fieldId) ?? c.fieldName,
+        areaName: areaNameMap.get(c.areaId) ?? c.areaName,
+        cropName: cropNameMap.get(c.cropId) ?? c.cropName,
+        harvestTotalsByUnit: summarizeHarvests(hList),
+        workLogs: wList,
+        harvests: hList,
+      }))
+
+      const allWorkLogs = cultivationRecordResults
+        .flatMap(({ cultivation: c, workLogs: wList }) =>
+          wList.map(w => ({
+            ...w,
+            fieldId: c.fieldId,
+            fieldName: fieldNameMap.get(c.fieldId),
+            areaId: c.areaId,
+            areaName: areaNameMap.get(c.areaId),
+            cropId: c.cropId,
+            cropName: cropNameMap.get(c.cropId),
+            variety: c.variety,
+          }))
+        )
+        .sort((a, b) => a.date.localeCompare(b.date))
+
+      const allHarvests = cultivationRecordResults
+        .flatMap(({ cultivation: c, harvests: hList }) =>
+          hList.map(h => ({
+            ...h,
+            fieldId: c.fieldId,
+            fieldName: fieldNameMap.get(c.fieldId),
+            areaId: c.areaId,
+            areaName: areaNameMap.get(c.areaId),
+            cropId: c.cropId,
+            cropName: cropNameMap.get(c.cropId),
+            variety: c.variety,
+          }))
+        )
+        .sort((a, b) => a.harvestDate.localeCompare(b.harvestDate))
+
+      const weatherByField = weatherResults.map(({ field: f, items }) => ({
+        fieldId: f.fieldId,
+        fieldName: f.name,
+        location: f.location,
+        latitude: f.latitude,
+        longitude: f.longitude,
+        days: items.sort((a, b) => a.date.localeCompare(b.date)),
+      }))
+
+      const totalWeatherDays = weatherByField.reduce((sum, f) => sum + f.days.length, 0)
+
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        period: { startDate, endDate },
+        weatherGranularity: includeHourly ? 'daily_and_hourly' : 'daily_only',
+        summary: {
+          fieldCount: fieldList.length,
+          areaCount: areaList.length,
+          cropCount: cropList.length,
+          cultivationCount: enrichedCultivations.length,
+          workLogCount: allWorkLogs.length,
+          harvestCount: allHarvests.length,
+          weatherRecordCount: totalWeatherDays,
+        },
+        fields: fieldList,
+        areas: areaList.map(a => ({ ...a, fieldName: fieldNameMap.get(a.fieldId) })),
+        crops: cropList,
+        cultivations: enrichedCultivations,
+        workLogs: allWorkLogs,
+        harvests: allHarvests,
+        weatherByField,
+      }
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `mitsurufarm-export-${startDate}_to_${endDate}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      setLastSummary(
+        `出力完了：圃場 ${fieldList.length}件 / エリア ${areaList.length}件 / 栽培 ${enrichedCultivations.length}件 / 作業 ${allWorkLogs.length}件 / 収穫 ${allHarvests.length}件 / 天気 ${totalWeatherDays}日分`
+      )
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  return (
+    <Page title="データ一括出力（JSON）">
+      <form className="form" onSubmit={handleExport}>
+        <p className="hint">
+          指定した期間の作業記録・収穫記録・天気データと、圃場・エリア・作物・栽培の情報を1つのJSONファイルにまとめてダウンロードします（生成AIでの分析にそのまま利用できます）。
+        </p>
+
+        <div className="field-coord-inputs">
+          <label>
+            開始日
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            終了日
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              required
+            />
+          </label>
+        </div>
+
+        <label>
+          天気データの粒度
+          <select
+            value={includeHourly ? 'hourly' : 'daily'}
+            onChange={e => setIncludeHourly(e.target.value === 'hourly')}
+          >
+            <option value="daily">日次サマリーのみ（生成AI分析向け・軽量でおすすめ）</option>
+            <option value="hourly">1時間ごとの詳細天気も含める（フルデータ）</option>
+          </select>
+        </label>
+
+        {error && <Notice>{error}</Notice>}
+        {lastSummary && <div className="harvest-summary-box"><span className="harvest-summary-label">{lastSummary}</span></div>}
+
+        <button className="primary" disabled={exporting}>
+          {exporting ? 'データ取得・作成中…' : 'JSONを一括ダウンロード'}
+        </button>
+      </form>
+    </Page>
+  )
+}
 function NotFound() { return <Page title="ページが見つかりません"><Link to="/">ホームへ戻る</Link></Page> }
 function RoutesView() {
   return (
@@ -593,6 +805,7 @@ function RoutesView() {
               <Route path="/crops" element={<Crops />} />
               <Route path="/crops/new" element={<FormPage kind="crop" />} />
               <Route path="/crops/:cropId/edit" element={<FormPage kind="crop" />} />
+              <Route path="/export" element={<ExportPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Protected>

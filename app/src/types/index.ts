@@ -7,5 +7,6 @@ export interface Cultivation { cultivationId: string; fieldId: string; areaId: s
 export interface WorkLog { workLogId: string; cultivationId: string; date: string; workType: string; description?: string; workMinutes?: number; workerCount?: number; materials?: string[]; tools?: string[]; soilCondition?: string; beforeCondition?: string; afterCondition?: string; note?: string }
 export interface Harvest { harvestId: string; cultivationId: string; harvestDate: string; quantity: number; unit: string; saleQuantity?: number; selfConsumptionQuantity?: number; discardQuantity?: number; sales?: number; salesChannel?: string; note?: string }
 export interface Photo { photoId: string; cultivationId: string; caption?: string; url?: string; createdAt?: string }
+export interface WeatherRecord { fieldId: string; fieldName?: string; location?: string; date: string; latitude: number; longitude: number; coordinateSource?: string; daily: Record<string, unknown>; hourly?: Record<string, unknown>[]; source?: string }
 export interface PagedResponse<T> { items: T[]; nextToken?: string | null }
 export class ApiError extends Error { constructor(public status: number, message: string, public code?: string) { super(message) } }
