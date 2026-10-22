@@ -561,6 +561,7 @@ function RecordList({ type }: { type: 'work' | 'harvest' }) { const { cultivatio
 function Photos() { const { cultivationId = '' } = useParams(); const [items, setItems] = useState<Photo[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); useEffect(() => { setLoading(true); photos.list(cultivationId).then(v => setItems(v.items)).catch(e => setError(errorMessage(e))).finally(() => setLoading(false)) }, [cultivationId]); return <Page title="写真" action={<Link className="primary button-link" to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真を追加</Link>}>{error && <Notice>{error}</Notice>}{loading ? <Empty text="読み込み中…" /> : <><div className="photo-grid">{items.map(p => <figure key={p.photoId}>{p.url ? <img src={p.url} alt={p.caption || '栽培写真'} /> : <div className="photo-placeholder">写真</div>}<figcaption>{p.caption || '説明なし'}</figcaption></figure>)}</div>{!items.length && !error && <Empty text="写真がありません。" />}</>}</Page> }
 function PhotoUpload() { const { cultivationId = '' } = useParams(); const navigate = useNavigate(); const [file, setFile] = useState<File>(); const [caption, setCaption] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const submit = async (e: FormEvent) => { e.preventDefault(); if (!file) return setError('写真を選択してください。'); if (file.size > 5 * 1024 * 1024) return setError('写真は5MB以下にしてください。'); setSaving(true); try { const form = new FormData(); form.append('file', file); form.append('caption', caption); await photos.upload(cultivationId, form); navigate(`/cultivations/${cultivationId}/photos`) } catch (e) { setError(errorMessage(e)); setSaving(false) } }; return <Page title="写真を追加"><form className="form" onSubmit={submit}><label>写真ファイル<input type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0])} /></label><label>キャプション<input value={caption} onChange={e => setCaption(e.target.value)} /></label><p className="hint">最大5MB。Dropboxの認証情報はブラウザには保存されません。</p>{error && <Notice>{error}</Notice>}<button className="primary" disabled={saving}>{saving ? 'アップロード中…' : 'アップロード'}</button></form></Page> }
 function ExportPage() {
+  const { login } = useAuth()
   const [startDate, setStartDate] = useState(() => `${new Date().getFullYear()}-01-01`)
   const [endDate, setEndDate] = useState(() => todayDate())
   const [includeHourly, setIncludeHourly] = useState(false)
@@ -589,23 +590,23 @@ function ExportPage() {
         cultivations.list(),
       ])
 
-      const fieldList = fieldRes.items
-      const cropList = cropRes.items
-      const cultivationList = cultivationRes.items
+      const fieldList = fieldRes?.items || []
+      const cropList = cropRes?.items || []
+      const cultivationList = cultivationRes?.items || []
 
       const [areaResults, weatherResults] = await Promise.all([
-        Promise.all(fieldList.map(f => areas.list(f.fieldId))),
+        Promise.all(fieldList.map(f => areas.list(f.fieldId).catch(() => ({ items: [] as Area[] })))),
         Promise.all(
           fieldList.map(f =>
             fields
               .weather(f.fieldId, startDate, endDate, includeHourly)
-              .then(res => ({ field: f, items: res.items }))
+              .then(res => ({ field: f, items: Array.isArray(res?.items) ? res.items : [] }))
               .catch(() => ({ field: f, items: [] as WeatherRecord[] }))
           )
         ),
       ])
 
-      const areaList = areaResults.flatMap(r => r.items)
+      const areaList = areaResults.flatMap(r => r?.items || [])
       const fieldNameMap = new Map(fieldList.map(f => [f.fieldId, f.name]))
       const areaNameMap = new Map(areaList.map(a => [a.areaId, a.name]))
       const cropNameMap = new Map(cropList.map(c => [c.cropId, c.name]))
@@ -613,13 +614,13 @@ function ExportPage() {
       const cultivationRecordResults = await Promise.all(
         cultivationList.map(async c => {
           const [wRes, hRes] = await Promise.all([
-            workLogs.list(c.cultivationId),
-            harvests.list(c.cultivationId),
+            workLogs.list(c.cultivationId).catch(() => ({ items: [] as WorkLog[] })),
+            harvests.list(c.cultivationId).catch(() => ({ items: [] as Harvest[] })),
           ])
-          const filteredWorkLogs = wRes.items
+          const filteredWorkLogs = (wRes?.items || [])
             .filter(w => w.date >= startDate && w.date <= endDate)
             .sort((a, b) => a.date.localeCompare(b.date))
-          const filteredHarvests = hRes.items
+          const filteredHarvests = (hRes?.items || [])
             .filter(h => h.harvestDate >= startDate && h.harvestDate <= endDate)
             .sort((a, b) => a.harvestDate.localeCompare(b.harvestDate))
           return {
@@ -676,7 +677,7 @@ function ExportPage() {
         location: f.location,
         latitude: f.latitude,
         longitude: f.longitude,
-        days: items.sort((a, b) => a.date.localeCompare(b.date)),
+        days: (items || []).sort((a, b) => a.date.localeCompare(b.date)),
       }))
 
       const totalWeatherDays = weatherByField.reduce((sum, f) => sum + f.days.length, 0)
@@ -762,7 +763,18 @@ function ExportPage() {
           </select>
         </label>
 
-        {error && <Notice>{error}</Notice>}
+        {error && (
+          <Notice>
+            {error}
+            {error.includes('ログイン') && (
+              <div style={{ marginTop: '12px' }}>
+                <button type="button" className="primary" onClick={() => void login()}>
+                  再度ログインする
+                </button>
+              </div>
+            )}
+          </Notice>
+        )}
         {lastSummary && <div className="harvest-summary-box"><span className="harvest-summary-label">{lastSummary}</span></div>}
 
         <button className="primary" disabled={exporting}>

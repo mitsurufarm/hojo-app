@@ -10,5 +10,12 @@ export function configureAuth() {
 }
 export const signIn = () => signInWithRedirect()
 export const signOut = () => amplifySignOut()
-export async function getAccessToken() { const session = await fetchAuthSession(); return session.tokens?.accessToken?.toString() }
+export async function getAccessToken(forceRefresh = false) {
+  try {
+    const session = await fetchAuthSession({ forceRefresh })
+    return session.tokens?.accessToken?.toString()
+  } catch {
+    return undefined
+  }
+}
 export async function getCurrentAuthState() { if (!authConfigured) return null; try { return await getCurrentUser() } catch { return null } }
