@@ -1,5 +1,5 @@
-import { getAccessToken } from '../auth/cognito'
-import { ApiError } from '../types'
+import { getAccessToken } from '@/shared/auth/cognito'
+import { ApiError } from '@/shared/types'
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '')
 
@@ -16,7 +16,7 @@ async function request<T>(path: string, init: RequestInit = {}, isRetry = false)
   let response: Response
   try {
     response = await fetch(`${baseUrl}/api/v1${path}`, { ...init, headers })
-  } catch (e) {
+  } catch {
     throw new ApiError(0, 'ネットワークエラーが発生しました。インターネット接続を確認してください。', 'NETWORK_ERROR')
   }
 
