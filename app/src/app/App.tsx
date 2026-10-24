@@ -558,7 +558,94 @@ function FormControl({ label, name, type = 'text', value, onChange }: { label: s
 
 function Crops() { const [items, setItems] = useState<Crop[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); useEffect(() => { setLoading(true); crops.list().then(v => setItems(v.items)).catch(e => setError(errorMessage(e))).finally(() => setLoading(false)) }, []); return <Page title="作物" action={<Link className="primary button-link" to="/crops/new">＋ 作物を追加</Link>}>{error && <Notice>{error}</Notice>}{loading ? <Empty text="読み込み中…" /> : <><div className="list">{items.map(c => <Link className="list-row" key={c.cropId} to={`/crops/${c.cropId}/edit`}><span><b>{c.name}</b><small>{c.category || '未分類'} ・ {c.active ? '利用中' : '利用停止'}</small></span><span>›</span></Link>)}</div>{!items.length && !error && <Empty text="作物がありません。" />}</>}</Page> }
 function RecordList({ type }: { type: 'work' | 'harvest' }) { const { cultivationId = '' } = useParams(); const [items, setItems] = useState<(WorkLog | Harvest)[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); useEffect(() => { setLoading(true); (type === 'work' ? workLogs.list(cultivationId) : harvests.list(cultivationId)).then(v => setItems(v.items)).catch(e => setError(errorMessage(e))).finally(() => setLoading(false)) }, [cultivationId, type]); const label = type === 'work' ? '作業' : '収穫'; const harvestTotals = type === 'harvest' ? summarizeHarvests(items as Harvest[]) : []; return <Page title={label} action={<Link className="primary button-link" to={`/cultivations/${cultivationId}/${type === 'work' ? 'work-logs' : 'harvests'}/new`}>＋ {label}を追加</Link>}>{error && <Notice>{error}</Notice>}{loading ? <Empty text="読み込み中…" /> : <>{type === 'harvest' && harvestTotals.length > 0 && <div className="harvest-summary-box"><span className="harvest-summary-label">収穫量合計（単位別）</span><div className="harvest-summary-chips">{harvestTotals.map(t => <span key={t.unit} className="harvest-total-pill"><b>{t.quantity.toLocaleString()}</b> {t.unit}</span>)}</div></div>}<div className="list">{items.map(item => { const work = type === 'work'; const id = work ? (item as WorkLog).workLogId : (item as Harvest).harvestId; const date = work ? (item as WorkLog).date : (item as Harvest).harvestDate; return <Link className="list-row" key={id} to={`/cultivations/${cultivationId}/${work ? 'work-logs' : 'harvests'}/${id}/edit`}><span><b>{date}　{work ? (item as WorkLog).workType : `${(item as Harvest).quantity} ${(item as Harvest).unit}`}</b><small>{work ? (item as WorkLog).description || '内容未入力' : `販売 ${(item as Harvest).saleQuantity ?? 0} ${(item as Harvest).unit}`}</small></span><span>›</span></Link> })}</div>{!items.length && !error && <Empty text={`${label}記録がありません。`} />}</>}</Page> }
-function Photos() { const { cultivationId = '' } = useParams(); const [items, setItems] = useState<Photo[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); useEffect(() => { setLoading(true); photos.list(cultivationId).then(v => setItems(v.items)).catch(e => setError(errorMessage(e))).finally(() => setLoading(false)) }, [cultivationId]); return <Page title="写真" action={<Link className="primary button-link" to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真を追加</Link>}>{error && <Notice>{error}</Notice>}{loading ? <Empty text="読み込み中…" /> : <><div className="photo-grid">{items.map(p => <figure key={p.photoId}>{p.url ? <img src={p.url} alt={p.caption || '栽培写真'} /> : <div className="photo-placeholder">表示準備中</div>}<figcaption>{p.caption || '説明なし'}</figcaption></figure>)}</div>{!items.length && !error && <Empty text="写真がありません。" />}</>}</Page> }
+function Photos() {
+  const { cultivationId = '' } = useParams();
+  const [items, setItems] = useState<Photo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const loadPhotos = () => {
+    setLoading(true);
+    photos.list(cultivationId)
+      .then(v => setItems(v.items))
+      .catch(e => setError(errorMessage(e)))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadPhotos();
+  }, [cultivationId]);
+
+  const handleDelete = async (photo: Photo) => {
+    if (!window.confirm('この写真を削除しますか？Google Driveからも完全に削除されます。')) return;
+    setDeleting(true);
+    try {
+      await photos.delete(cultivationId, photo.photoId);
+      setSelectedPhoto(null);
+      setItems(prev => prev.filter(p => p.photoId !== photo.photoId));
+    } catch (e) {
+      alert(`削除に失敗しました: ${errorMessage(e)}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <Page title="写真" action={<Link className="primary button-link" to={`/cultivations/${cultivationId}/photos/new`}>＋ 写真を追加</Link>}>
+      {error && <Notice>{error}</Notice>}
+      {loading ? (
+        <Empty text="読み込み中…" />
+      ) : (
+        <>
+          <div className="photo-grid">
+            {items.map(p => (
+              <figure
+                key={p.photoId}
+                className={p.url ? 'clickable-photo' : ''}
+                onClick={() => p.url && setSelectedPhoto(p)}
+                title={p.url ? 'クリックで拡大' : undefined}
+              >
+                {p.url ? (
+                  <img src={p.url} alt={p.caption || '栽培写真'} />
+                ) : (
+                  <div className="photo-placeholder">表示準備中</div>
+                )}
+                <figcaption>{p.caption || '説明なし'}</figcaption>
+              </figure>
+            ))}
+          </div>
+          {!items.length && !error && <Empty text="写真がありません。" />}
+        </>
+      )}
+
+      {selectedPhoto && (
+        <div className="photo-modal-backdrop" onClick={() => setSelectedPhoto(null)}>
+          <div className="photo-modal-content" onClick={e => e.stopPropagation()}>
+            <button className="photo-modal-close" onClick={() => setSelectedPhoto(null)} title="閉じる">✕</button>
+            <div className="photo-modal-image-wrap">
+              <img src={selectedPhoto.url!} alt={selectedPhoto.caption || '拡大写真'} />
+            </div>
+            <div className="photo-modal-footer">
+              <div className="photo-modal-caption">
+                <b>{selectedPhoto.caption || '説明なし'}</b>
+                {selectedPhoto.createdAt && <small>{selectedPhoto.createdAt.slice(0, 10)} 登録</small>}
+              </div>
+              <button
+                className="secondary delete-button"
+                disabled={deleting}
+                onClick={() => handleDelete(selectedPhoto)}
+              >
+                {deleting ? '削除中…' : '写真を削除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Page>
+  );
+}
 function PhotoUpload() { const { cultivationId = '' } = useParams(); const navigate = useNavigate(); const [file, setFile] = useState<File>(); const [caption, setCaption] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const submit = async (e: FormEvent) => { e.preventDefault(); if (!file) return setError('写真を選択してください。'); if (file.size > 5 * 1024 * 1024) return setError('写真は5MB以下にしてください。'); setSaving(true); try { const form = new FormData(); form.append('file', file); form.append('caption', caption); await photos.upload(cultivationId, form); navigate(`/cultivations/${cultivationId}/photos`) } catch (e) { setError(errorMessage(e)); setSaving(false) } }; return <Page title="写真を追加"><form className="form" onSubmit={submit}><label>写真ファイル<input type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0])} /></label><label>キャプション<input value={caption} onChange={e => setCaption(e.target.value)} /></label><p className="hint">最大5MB。写真はGoogle Driveに保存され、認証情報はブラウザには保存されません。</p>{error && <Notice>{error}</Notice>}<button className="primary" disabled={saving}>{saving ? 'アップロード中…' : 'アップロード'}</button></form></Page> }
 function ExportPage() {
   const { login } = useAuth()
