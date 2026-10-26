@@ -34,3 +34,4 @@ export function PhotoModal({ photo, deleting, onClose, onDelete }: PhotoModalPro
     </div>
   )
 }
+

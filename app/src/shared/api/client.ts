@@ -1,11 +1,35 @@
 import { getAccessToken } from '@/shared/auth/cognito'
 import { ApiError } from '@/shared/types'
 
-const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '')
+function normalizeBaseUrl(raw?: string): string | undefined {
+  const trimmed = raw?.trim().replace(/\/+$/, '').replace(/\/api\/v1$/, '')
+  return trimmed || undefined
+}
+
+const masterApiUrl = normalizeBaseUrl(import.meta.env.VITE_MASTER_API_URL)
+const cultivationApiUrl = normalizeBaseUrl(import.meta.env.VITE_CULTIVATION_API_URL)
+const photoApiUrl = normalizeBaseUrl(import.meta.env.VITE_PHOTO_API_URL)
+const fallbackBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL)
+
+function resolveBaseUrl(path: string): string | undefined {
+  const cleanPath = path.split('?')[0]
+  if (cleanPath.includes('/photos')) {
+    return photoApiUrl ?? fallbackBaseUrl
+  }
+  if (cleanPath.startsWith('/cultivations') || cleanPath.endsWith('/cultivations')) {
+    return cultivationApiUrl ?? fallbackBaseUrl
+  }
+  return masterApiUrl ?? fallbackBaseUrl
+}
 
 async function request<T>(path: string, init: RequestInit = {}, isRetry = false): Promise<T> {
+  const baseUrl = resolveBaseUrl(path)
   if (!baseUrl) {
-    throw new ApiError(0, 'APIの接続先が設定されていません。.env.local を設定してください。', 'CONFIGURATION_ERROR')
+    throw new ApiError(
+      0,
+      'APIの接続先（Lambda 関数URL）が設定されていません。.env.local を設定してください。',
+      'CONFIGURATION_ERROR'
+    )
   }
 
   const token = await getAccessToken(isRetry)
@@ -29,7 +53,9 @@ async function request<T>(path: string, init: RequestInit = {}, isRetry = false)
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({} as Record<string, unknown>))
-    const serverMessage = (body as { error?: { message?: string }; message?: string }).error?.message || (body as { message?: string }).message
+    const serverMessage =
+      (body as { error?: { message?: string }; message?: string }).error?.message ||
+      (body as { message?: string }).message
     const defaultMsg =
       response.status === 401
         ? 'ログインの有効期限が切れました。一度ログアウトして再ログインしてください。'

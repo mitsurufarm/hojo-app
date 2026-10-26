@@ -71,3 +71,4 @@ export const photos = {
   upload: (id: string, v: FormData) => api.post<Photo>(`/cultivations/${id}/photos`, v),
   delete: (id: string, child: string) => api.delete(`/cultivations/${id}/photos/${child}`),
 }
+

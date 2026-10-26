@@ -16,3 +16,4 @@ export function CultivationCard({ item }: CultivationCardProps) {
     </Link>
   )
 }
+

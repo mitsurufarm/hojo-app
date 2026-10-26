@@ -17,3 +17,4 @@ export function Protected({ children }: { children: ReactNode }) {
 
   return <AppShell>{children}</AppShell>
 }
+

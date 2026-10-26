@@ -45,3 +45,4 @@ export const summarizeHarvests = (items: Harvest[]): { unit: string; quantity: n
 
 export const errorMessage = (e: unknown) =>
   e instanceof Error ? e.message : '予期しないエラーが発生しました。'
+

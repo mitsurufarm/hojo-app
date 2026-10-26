@@ -24,7 +24,7 @@ export function LoginPage() {
           <Notice>
             <strong>接続設定が未完了です。</strong>
             <br />
-            `app/.env.local` にCognitoとAPI Gatewayの公開設定値を入力してください。
+            `app/.env.local` にCognitoとLambda 関数URLの公開設定値を入力してください。
           </Notice>
         )}
         <a className="back-link" href="/">
